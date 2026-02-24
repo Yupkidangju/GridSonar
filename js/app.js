@@ -329,7 +329,9 @@ function readAllDirectoryEntries(dirReader) {
 }
 
 /**
- * 파일 배열을 인덱싱합니다.
+ * [v1.1.4] 파일 배열을 인덱싱합니다.
+ * 배치 모드: 모든 파일 처리 후 BM25/Fuse 단 1회만 리빌드.
+ * 고유 파일키: name_lastModified_size로 동일 이름 다른 파일 충돌 방지.
  * @param {File[]} files
  */
 async function handleFileDrop(files) {
@@ -339,31 +341,52 @@ async function handleFileDrop(files) {
     dom.dropzone.style.display = 'none';
     dom.fileTree.style.display = 'block';
 
-    for (const file of files) {
-        if (state.files.has(file.name)) continue; // 중복 방지
+    state.isIndexing = true;
+    const isBatch = files.length > 1;
 
-        state.files.set(file.name, {
+    for (const file of files) {
+        // [v1.1.4] 고유 파일키로 중복 판별 (file.name만으로는 다른 경로의 동명 파일 충돌)
+        const fileKey = `${file.name}__${file.lastModified}__${file.size}`;
+        if (state.files.has(fileKey)) continue;
+
+        state.files.set(fileKey, {
             file,
+            fileKey,
+            displayName: file.name,
             status: 'pending',
             sheets: [],
-            totalRows: 0
+            totalRows: 0,
+            worker: null  // [v1.1.4] 실행 중 워커 참조 (좀비 워커 방지)
         });
         renderFileTree();
-        await indexFile(file);
+        await indexFile(file, fileKey, isBatch);
     }
+
+    // [v1.1.4] 배치 완료 후 단 1회 리빌드
+    if (isBatch) {
+        setStatus('BM25 인덱스 구축 중...', true, 95);
+        await new Promise(resolve => setTimeout(() => {
+            state.index.buildBM25();
+            resolve();
+        }, 0));
+        await updateFuseInstance();
+        updateStats();
+        setStatus(`✅ 전체 인덱싱 완료 (${state.index.totalFiles}파일, ${state.index.totalRows.toLocaleString()}행)`, false);
+    }
+    state.isIndexing = false;
 }
 
 /**
- * [v1.1.2] 파일 파싱 및 인덱싱
- * Web Worker가 지원되면 파싱을 워커로 격리하여 UI 프리징 방지.
- * Worker 미지원 시 기존 방식(메인 스레드 파싱)으로 폴백.
+ * [v1.1.4] 파일 파싱 및 인덱싱
+ * @param {File} file
+ * @param {string} fileKey - 고유 파일 식별자
+ * @param {boolean} isBatch - 배치 모드 여부 (true면 BM25/Fuse 건너뛰)
  */
-async function indexFile(file) {
-    const fileInfo = state.files.get(file.name);
+async function indexFile(file, fileKey, isBatch = false) {
+    const fileInfo = state.files.get(fileKey);
     fileInfo.status = 'indexing';
     renderFileTree();
 
-    state.isIndexing = true;
     setStatus(`인덱싱 중: ${file.name}`, true);
 
     // 캐시 확인
@@ -371,58 +394,52 @@ async function indexFile(file) {
     if (cached) {
         const restored = await cache.loadFileData(file.name, file.lastModified, file.size);
         if (restored && restored.cells && restored.cells.length > 0) {
-            restoreFromCache(file.name, restored);
+            restoreFromCache(fileKey, file.name, restored);
             fileInfo.status = 'ready';
             fileInfo.totalRows = restored.cells.length;
             renderFileTree();
             updateStats();
             setStatus(`✅ 캐시에서 복원: ${file.name}`, false);
             showToast(`⚡ ${file.name} 캐시에서 복원`, 'success');
-            state.isIndexing = false;
-            finishIndexing();
             return;
         }
     }
 
     // Worker 지원 여부에 따라 분기
     if (typeof Worker !== 'undefined') {
-        await indexFileViaWorker(file, fileInfo);
+        await indexFileViaWorker(file, fileKey, fileInfo, isBatch);
     } else {
-        await indexFileFallback(file, fileInfo);
+        await indexFileFallback(file, fileKey, fileInfo, isBatch);
     }
 }
 
 /**
- * [v1.1.2] Web Worker 기반 파일 파싱
- * 파싱(SheetJS 동기 연산)은 워커에서, 인덱싱은 청크 수신 시 메인 스레드에서 처리.
+ * [v1.1.4] Web Worker 기반 파일 파싱
+ * @param {boolean} isBatch - true면 BM25/Fuse 빌드 건너뛰
  */
-async function indexFileViaWorker(file, fileInfo) {
+async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
     const cellsForCache = [];
     const headersForCache = {};
     let totalRows = 0;
 
     try {
-        // Module Worker 생성
         const worker = new Worker('./js/workers/parseWorker.js', { type: 'module' });
-        const id = `${file.name}_${Date.now()}`;
+        // [v1.1.4] 워커 인스턴스 저장 (좀비 워커 방지용)
+        fileInfo.worker = worker;
+        const id = `${fileKey}_${Date.now()}`;
 
-        // [v1.1.3 Fix] 파일 데이터 준비
-        // CSV: File 객체 직접 전달 (file.text() OOM 방지, PapaParse 스트리밍)
-        // Excel: ArrayBuffer로 변환 (SheetJS 필수)
         const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
         const fileType = ext === '.csv' ? 'csv' : ext.replace('.', '');
         let data;
         if (fileType === 'csv') {
-            data = file; // File 객체 자체를 넘김 (Blob은 structured-cloneable)
+            data = file;
         } else {
             data = await file.arrayBuffer();
         }
 
-        // 워커에 파싱 요청 (ArrayBuffer는 Transferable로 전송)
         const transferList = fileType === 'csv' ? [] : [data];
         worker.postMessage({ type: 'parse', id, fileName: file.name, fileType, data }, transferList);
 
-        // 워커 메시지 수신 → 인덱싱
         await new Promise((resolve, reject) => {
             worker.onmessage = (e) => {
                 const msg = e.data;
@@ -431,12 +448,12 @@ async function indexFileViaWorker(file, fileInfo) {
                 switch (msg.type) {
                     case 'chunk': {
                         const { sheetName, headers, rows, offset } = msg;
-                        state.index.addDataChunk(file.name, file.name, sheetName, headers, rows, offset);
+                        // [v1.1.4] fileKey를 filePath로 사용 (고유 식별자)
+                        state.index.addDataChunk(fileKey, file.name, sheetName, headers, rows, offset);
 
                         if (!fileInfo.sheets.includes(sheetName)) {
                             fileInfo.sheets.push(sheetName);
                         }
-
                         if (!headersForCache[sheetName]) {
                             headersForCache[sheetName] = headers;
                         }
@@ -461,12 +478,14 @@ async function indexFileViaWorker(file, fileInfo) {
                     case 'complete':
                         fileInfo.status = 'ready';
                         fileInfo.totalRows = msg.totalRows;
+                        fileInfo.worker = null;
                         renderFileTree();
                         worker.terminate();
                         resolve();
                         break;
                     case 'error':
                         fileInfo.status = 'error';
+                        fileInfo.worker = null;
                         renderFileTree();
                         showToast(`⚠️ ${msg.message}`, 'error');
                         logger.error(msg.message);
@@ -477,21 +496,25 @@ async function indexFileViaWorker(file, fileInfo) {
             };
 
             worker.onerror = (err) => {
-                // Module Worker 실패 시 폴백으로 전환
                 logger.warn('Worker 실패, 폴백 모드:', err.message);
+                fileInfo.worker = null;
                 worker.terminate();
-                indexFileFallback(file, fileInfo).then(resolve).catch(reject);
+                indexFileFallback(file, fileKey, fileInfo, isBatch).then(resolve).catch(reject);
             };
         });
 
-        // BM25 인덱스 구축
-        setStatus('BM25 인덱스 구축 중...', true, 95);
-        await new Promise(resolve => setTimeout(() => {
-            state.index.buildBM25();
-            resolve();
-        }, 0));
+        // [v1.1.4] 배치 모드가 아닐 때만 BM25/Fuse 빌드
+        if (!isBatch) {
+            setStatus('BM25 인덱스 구축 중...', true, 95);
+            await new Promise(resolve => setTimeout(() => {
+                state.index.buildBM25();
+                resolve();
+            }, 0));
+            await updateFuseInstance();
+            updateStats();
+        }
 
-        // 캐시에 저장
+        // 캐시 저장
         if (cellsForCache.length > 0) {
             cache.saveFileData({
                 fileName: file.name, lastModified: file.lastModified,
@@ -499,8 +522,6 @@ async function indexFileViaWorker(file, fileInfo) {
             });
         }
 
-        await updateFuseInstance();
-        updateStats();
         setStatus(`✅ 인덱싱 완료: ${file.name} (${totalRows.toLocaleString()}행)`, false);
         showToast(`✅ ${file.name} 인덱싱 완료 (${totalRows.toLocaleString()}행)`, 'success');
 
@@ -510,29 +531,26 @@ async function indexFileViaWorker(file, fileInfo) {
             renderFileTree();
             showToast(`⚠️ 인덱싱 실패: ${file.name}`, 'error');
         }
+        fileInfo.worker = null;
         logger.error('인덱싱 실패:', err);
     }
-
-    state.isIndexing = false;
-    finishIndexing();
 }
 
 /**
- * 폴백: Web Worker 미지원 시 기존 방식으로 메인 스레드에서 파싱
+ * [v1.1.4] 폴백: Web Worker 미지원 시 메인 스레드 파싱
  */
-async function indexFileFallback(file, fileInfo) {
+async function indexFileFallback(file, fileKey, fileInfo, isBatch) {
     const cellsForCache = [];
     const headersForCache = {};
     let totalRows = 0;
 
     try {
-        // 기존 fileParser 사용 (동적 import)
         const { parseFile: parseFileFn } = await import('./core/fileParser.js');
 
         await parseFileFn(file, {
             onChunk(chunkData) {
                 const { sheetName, headers, rows, offset } = chunkData;
-                state.index.addDataChunk(file.name, file.name, sheetName, headers, rows, offset);
+                state.index.addDataChunk(fileKey, file.name, sheetName, headers, rows, offset);
 
                 if (!fileInfo.sheets.includes(sheetName)) {
                     fileInfo.sheets.push(sheetName);
@@ -559,8 +577,12 @@ async function indexFileFallback(file, fileInfo) {
             onError(message) { fileInfo.status = 'error'; renderFileTree(); showToast(`⚠️ ${message}`, 'error'); }
         });
 
-        setStatus('BM25 인덱스 구축 중...', true, 95);
-        await new Promise(resolve => setTimeout(() => { state.index.buildBM25(); resolve(); }, 0));
+        if (!isBatch) {
+            setStatus('BM25 인덱스 구축 중...', true, 95);
+            await new Promise(resolve => setTimeout(() => { state.index.buildBM25(); resolve(); }, 0));
+            await updateFuseInstance();
+            updateStats();
+        }
 
         if (cellsForCache.length > 0) {
             cache.saveFileData({
@@ -569,8 +591,6 @@ async function indexFileFallback(file, fileInfo) {
             });
         }
 
-        await updateFuseInstance();
-        updateStats();
         setStatus(`✅ 인덱싱 완료: ${file.name} (${totalRows.toLocaleString()}행)`, false);
         showToast(`✅ ${file.name} 인덱싱 완료 (${totalRows.toLocaleString()}행)`, 'success');
 
@@ -580,12 +600,9 @@ async function indexFileFallback(file, fileInfo) {
         showToast(`⚠️ 인덱싱 실패: ${file.name}`, 'error');
         logger.error('인덱싱 실패:', err);
     }
-
-    state.isIndexing = false;
-    finishIndexing();
 }
 
-function restoreFromCache(fileName, data) {
+function restoreFromCache(fileKey, displayName, data) {
     const headers = data.headers || {};
 
     // 셀을 시트별/행별로 그룹핑
@@ -609,10 +626,10 @@ function restoreFromCache(fileName, data) {
 
         if (rows.length > 0) {
             const minRow = sortedRows[0];
-            state.index.addDataChunk(fileName, fileName, sheetName, hdrs, rows, minRow);
+            state.index.addDataChunk(fileKey, displayName, sheetName, hdrs, rows, minRow);
         }
 
-        const fileInfo = state.files.get(fileName);
+        const fileInfo = state.files.get(fileKey);
         if (fileInfo && !fileInfo.sheets.includes(sheetName)) {
             fileInfo.sheets.push(sheetName);
         }
@@ -811,23 +828,23 @@ function applyResultFilter() {
 // ── 파일 트리 렌더링 ──
 function renderFileTree() {
     let html = '';
-    for (const [fileName, info] of state.files) {
+    for (const [fileKey, info] of state.files) {
+        const displayName = info.displayName || fileKey;
         const statusIcon = info.status === 'ready' ? '✅' :
             info.status === 'indexing' ? '⏳' :
                 info.status === 'error' ? '❌' : '📄';
-        const extIcon = fileName.endsWith('.csv') ? '📊' :
-            fileName.endsWith('.xls') ? '📗' : '📘';
+        const extIcon = displayName.endsWith('.csv') ? '📊' :
+            displayName.endsWith('.xls') ? '📗' : '📘';
 
         html += `
-      <li class="file-tree-item" data-file="${escapeHtml(fileName)}">
+      <li class="file-tree-item" data-file="${escapeHtml(fileKey)}">
         <span class="file-icon">${extIcon}</span>
-        <span class="file-name truncate" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>
+        <span class="file-name truncate" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span>
         <span style="font-size:10px;color:var(--text-tertiary)">${statusIcon}</span>
-        <span class="file-remove" data-remove="${escapeHtml(fileName)}" title="제거">✕</span>
+        <span class="file-remove" data-remove="${escapeHtml(fileKey)}" title="제거">✕</span>
       </li>
     `;
 
-        // 시트 목록
         for (const sheet of info.sheets) {
             html += `
         <li class="file-tree-sheet">
@@ -843,19 +860,31 @@ function renderFileTree() {
     dom.fileTree.querySelectorAll('.file-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const fileName = btn.dataset.remove;
-            removeFile(fileName);
+            const fileKey = btn.dataset.remove;
+            removeFile(fileKey);
         });
     });
 }
 
-function removeFile(fileName) {
-    state.index.removeFile(fileName);
-    const fileInfo = state.files.get(fileName);
-    if (fileInfo && fileInfo.file) {
-        cache.removeFileCache(fileName, fileInfo.file.lastModified, fileInfo.file.size);
+/**
+ * [v1.1.4] 파일 제거 — 좀비 워커 종료 + 인덱스/캐시 정리
+ */
+function removeFile(fileKey) {
+    const fileInfo = state.files.get(fileKey);
+    if (!fileInfo) return;
+
+    // [v1.1.4] 실행 중인 워커가 있으면 즉시 종료 (좀비 워커 방지)
+    if (fileInfo.worker) {
+        fileInfo.worker.terminate();
+        fileInfo.worker = null;
+        logger.info(`워커 종료: ${fileInfo.displayName}`);
     }
-    state.files.delete(fileName);
+
+    state.index.removeFile(fileKey);
+    if (fileInfo.file) {
+        cache.removeFileCache(fileInfo.displayName, fileInfo.file.lastModified, fileInfo.file.size);
+    }
+    state.files.delete(fileKey);
 
     if (state.files.size === 0) {
         dom.fileTree.style.display = 'none';
@@ -864,7 +893,7 @@ function removeFile(fileName) {
 
     renderFileTree();
     updateStats();
-    showToast(`🗑️ ${fileName} 제거됨`, 'info');
+    showToast(`🗑️ ${fileInfo.displayName} 제거됨`, 'info');
 }
 
 // ── 상세 보기 모달 ──
