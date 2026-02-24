@@ -227,5 +227,50 @@ export async function clearAllCache() {
         console.error('[CacheManager] 전체 캐시 삭제 실패:', err);
     }
 }
+/**
+ * [v1.1.5] 스트리밍 캐시 API — 대용량 파일의 OOM 방지
+ * 셀 데이터를 메모리에 모으지 않고 청크가 도착할 때마다 IndexedDB에 즉시 기록합니다.
+ *
+ * 사용법:
+ *   const writer = await cache.beginCacheWrite(fileName, lastModified, fileSize, headers);
+ *   // 청크가 도착할 때마다:
+ *   await writer.appendChunk(cellsArray);
+ *   // 최종 완료:
+ *   await writer.finalize();
+ */
+export async function beginCacheWrite(fileName, lastModified, fileSize, headers) {
+    await ensureStores();
+    const key = makeCacheKey(fileName, lastModified, fileSize);
+    let chunkIdx = 0;
+    let totalCells = 0;
+
+    // 헤더 즉시 저장
+    await sheetHeaderStore.setItem(key, headers);
+
+    return {
+        /**
+         * 셀 배열을 즉시 IndexedDB에 기록하고 메모리에서 해제합니다.
+         * @param {Object[]} cells - 이번 청크의 셀 데이터
+         */
+        async appendChunk(cells) {
+            if (cells.length === 0) return;
+            await cellDataStore.setItem(`${key}__chunk_${chunkIdx}`, cells);
+            totalCells += cells.length;
+            chunkIdx++;
+        },
+
+        /**
+         * 메타데이터를 기록하고 캐시 트랜잭션을 완료합니다.
+         */
+        async finalize() {
+            await cellDataStore.setItem(`${key}__meta`, { totalChunks: chunkIdx });
+            await fileMetaStore.setItem(key, {
+                fileName, lastModified, fileSize,
+                indexedAt: Date.now(),
+                cellCount: totalCells
+            });
+        }
+    };
+}
 
 export { makeCacheKey };

@@ -99,9 +99,23 @@ function bindEvents() {
         }
     });
     dom.searchInput.addEventListener('focus', () => showSearchHistory());
+
+    // [v1.1.5] 디바운스 300ms 실시간 검색 (구글 스타일 UX)
+    let searchDebounceTimer = null;
     dom.searchInput.addEventListener('input', () => {
-        if (!dom.searchInput.value.trim()) showSearchHistory();
-        else hideSearchHistory();
+        const val = dom.searchInput.value.trim();
+        if (!val) {
+            showSearchHistory();
+            return;
+        }
+        hideSearchHistory();
+        // 300ms 후 자동 검색 트리거
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            if (dom.searchInput.value.trim()) {
+                performSearch();
+            }
+        }, 300);
     });
     document.addEventListener('click', (e) => {
         if (!dom.searchInput.contains(e.target) && !dom.searchHistory.contains(e.target)) {
@@ -414,17 +428,19 @@ async function indexFile(file, fileKey, isBatch = false) {
 }
 
 /**
- * [v1.1.4] Web Worker 기반 파일 파싱
- * @param {boolean} isBatch - true면 BM25/Fuse 빌드 건너뛰
+ * [v1.1.5] Web Worker 기반 파일 파싱 — 스트리밍 캐시 적용
+ * cellsForCache 메모리 누적 대신 청크가 도잩할 때마다 IndexedDB에 즉시 기록.
  */
 async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
-    const cellsForCache = [];
     const headersForCache = {};
     let totalRows = 0;
+    // [v1.1.5] 스트리밍 캐시 라이터 (OOM 방지)
+    let cacheWriter = null;
+    let cellBuffer = [];
+    const CACHE_FLUSH_SIZE = 5000; // IndexedDB 청크 단위
 
     try {
         const worker = new Worker('./js/workers/parseWorker.js', { type: 'module' });
-        // [v1.1.4] 워커 인스턴스 저장 (좀비 워커 방지용)
         fileInfo.worker = worker;
         const id = `${fileKey}_${Date.now()}`;
 
@@ -441,14 +457,13 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
         worker.postMessage({ type: 'parse', id, fileName: file.name, fileType, data }, transferList);
 
         await new Promise((resolve, reject) => {
-            worker.onmessage = (e) => {
+            worker.onmessage = async (e) => {
                 const msg = e.data;
                 if (msg.id !== id) return;
 
                 switch (msg.type) {
                     case 'chunk': {
                         const { sheetName, headers, rows, offset } = msg;
-                        // [v1.1.4] fileKey를 filePath로 사용 (고유 식별자)
                         state.index.addDataChunk(fileKey, file.name, sheetName, headers, rows, offset);
 
                         if (!fileInfo.sheets.includes(sheetName)) {
@@ -457,17 +472,30 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
                         if (!headersForCache[sheetName]) {
                             headersForCache[sheetName] = headers;
                         }
+
+                        // [v1.1.5] 캐시 버퍼에 셀 수집 → 임계값 도달 시 IndexedDB로 플러시
                         for (let ri = 0; ri < rows.length; ri++) {
                             for (let ci = 0; ci < headers.length; ci++) {
                                 const val = rows[ri][ci];
                                 if (val && val !== '' && val !== 'nan' && val !== 'None' && val !== 'undefined') {
-                                    cellsForCache.push({
+                                    cellBuffer.push({
                                         sheetName, rowIdx: offset + ri,
                                         colIdx: ci, colName: headers[ci], value: val
                                     });
                                 }
                             }
                         }
+
+                        // 버퍼가 차면 IndexedDB로 플러시
+                        if (cellBuffer.length >= CACHE_FLUSH_SIZE) {
+                            if (!cacheWriter) {
+                                cacheWriter = await cache.beginCacheWrite(
+                                    file.name, file.lastModified, file.size, headersForCache
+                                );
+                            }
+                            await cacheWriter.appendChunk(cellBuffer.splice(0));
+                        }
+
                         totalRows += rows.length;
                         renderFileTree();
                         break;
@@ -503,7 +531,6 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
             };
         });
 
-        // [v1.1.4] 배치 모드가 아닐 때만 BM25/Fuse 빌드
         if (!isBatch) {
             setStatus('BM25 인덱스 구축 중...', true, 95);
             await new Promise(resolve => setTimeout(() => {
@@ -514,12 +541,17 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
             updateStats();
         }
 
-        // 캐시 저장
-        if (cellsForCache.length > 0) {
-            cache.saveFileData({
-                fileName: file.name, lastModified: file.lastModified,
-                fileSize: file.size, cells: cellsForCache, headers: headersForCache
-            });
+        // [v1.1.5] 남은 캐시 버퍼 플러시 + 트랜잭션 완료
+        if (cellBuffer.length > 0 || cacheWriter) {
+            if (!cacheWriter) {
+                cacheWriter = await cache.beginCacheWrite(
+                    file.name, file.lastModified, file.size, headersForCache
+                );
+            }
+            if (cellBuffer.length > 0) {
+                await cacheWriter.appendChunk(cellBuffer.splice(0));
+            }
+            await cacheWriter.finalize();
         }
 
         setStatus(`✅ 인덱싱 완료: ${file.name} (${totalRows.toLocaleString()}행)`, false);
@@ -893,6 +925,8 @@ function removeFile(fileKey) {
 
     renderFileTree();
     updateStats();
+    // [v1.1.5 Fix] Fuse.js 사전 갱신 — 삭제된 파일의 어휘가 퍼지 검색에 좀비로 남지 않도록
+    updateFuseInstance();
     showToast(`🗑️ ${fileInfo.displayName} 제거됨`, 'info');
 }
 
