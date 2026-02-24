@@ -162,8 +162,12 @@ function bindEvents() {
 
     // 캐시 초기화
     dom.btnClearCache.addEventListener('click', async () => {
-        await cache.clearAllCache();
-        showToast('🗑️ 캐시가 초기화되었습니다', 'info');
+        // [v1.1.9 Fix] 캐시 제거 후 실제 리로드
+        // DB만 지우고 UI는 남으면 메모리/상태와 DB가 다른 유령 상태 발생
+        if (confirm('케시를 모두 지우고 앱을 초기화하시겠습니까?')) {
+            await cache.clearAllCache();
+            window.location.reload();
+        }
     });
 
     // 결과 액션
@@ -687,7 +691,11 @@ function restoreCacheChunk(fileKey, displayName, cells, headers) {
         });
 
         if (rows.length > 0) {
-            state.index.addDataChunk(fileKey, displayName, sheetName, hdrs, rows, sortedRows[0]);
+            // [v1.1.9 Fix] sortedRows 배열 자체를 전달 — 연속 오프셋 가정 대신 실제 행 번호 사용
+            // 중간에 빈 행이 있는 엑셀: sortedRows=[500,502,503]
+            // 기존: offset=500+0,1,2 → 500,501,502 (데이터 밀림!)
+            // 수정: addDataChunk이 배열을 받아 500,502,503으로 정확히 매핑
+            state.index.addDataChunk(fileKey, displayName, sheetName, hdrs, rows, sortedRows);
         }
 
         const fileInfo = state.files.get(fileKey);

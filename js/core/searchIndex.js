@@ -238,16 +238,16 @@ export class SearchIndex {
 
     /**
      * 데이터 청크를 인덱스에 추가합니다.
-     * scanner.worker에서 전달받은 chunk 데이터를 처리합니다.
      *
      * @param {string} filePath - 파일 식별자
      * @param {string} fileName - 파일명
      * @param {string} sheetName - 시트명
      * @param {string[]} headers - 컬럼 헤더 배열
      * @param {Array<Array<string>>} rows - 행 데이터 (2차원 배열)
-     * @param {number} rowOffset - 행 인덱스 오프셋
+     * @param {number|number[]} rowOffsetOrIndices - 행 인덱스 오프셋(Number) 또는 실제 행 번호 배열(Array)
+     *   [v1.1.9] 배열 다형성: 캐시 복원 시 빈 행으로 인한 인덱스 시프트 방지
      */
-    addDataChunk(filePath, fileName, sheetName, headers, rows, rowOffset = 0) {
+    addDataChunk(filePath, fileName, sheetName, headers, rows, rowOffsetOrIndices = 0) {
         const hKey = SearchIndex.headerKey(filePath, sheetName);
         if (!this.fileHeaders.has(hKey)) {
             this.fileHeaders.set(hKey, headers);
@@ -256,9 +256,14 @@ export class SearchIndex {
         this._indexedFiles.add(filePath);
         this._bm25Dirty = true;
 
+        // [v1.1.9] 다형성: 배열이면 각 행의 실제 인덱스, 숫자면 연속 오프셋
+        const isIndicesArray = Array.isArray(rowOffsetOrIndices);
+
         for (let localIdx = 0; localIdx < rows.length; localIdx++) {
             const row = rows[localIdx];
-            const actualRowIdx = rowOffset + localIdx;
+            const actualRowIdx = isIndicesArray
+                ? rowOffsetOrIndices[localIdx]
+                : (rowOffsetOrIndices + localIdx);
             const rKey = SearchIndex.rowKey(filePath, sheetName, actualRowIdx);
             const cellsDict = {};
 
