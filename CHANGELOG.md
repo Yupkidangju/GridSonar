@@ -5,6 +5,58 @@
 
 ---
 
+## [1.1.6] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **동시성 레이스 컨디션 차단** — Web Worker onmessage를 Promise Queue 패턴으로 순차 처리 강제
+- **인덱싱 중 검색 차단** — `state.isIndexing` 체크로 `buildBM25()` 동기 실행에 의한 UI 프리징 방어
+
+## [1.1.5] - 2026-02-25
+
+### 추가됨 (Added)
+- **스트리밍 캐시 API** — `beginCacheWrite→appendChunk→finalize` 패턴으로 대용량 파일 OOM 방지
+- **실시간 디바운스 검색** — 검색 입력 300ms 디바운싱 (구글 스타일 UX, designs.md 스펙 구현)
+
+### 수정됨 (Fixed)
+- **Fuse.js 좀비 데이터** — `removeFile()` 후 `updateFuseInstance()` 호출 추가, 삭제된 파일 어휘가 퍼지 검색에 남지 않도록
+
+## [1.1.4] - 2026-02-25
+
+### 추가됨 (Added)
+- **배치 모드 인덱싱** — 다중 파일 드롭 시 BM25/Fuse.js를 전체 처리 후 1회만 리빌드
+- **고유 파일키** — `name__lastModified__size` 조합으로 동일 이름 다른 파일 충돌 방지
+- **좀비 워커 사살** — `removeFile()` 시 실행 중 워커 즉시 `terminate()`
+
+## [1.1.3] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **CSV 대용량 OOM 방지** — `file.text()` 제거, File(Blob) 객체 직접 워커 전달 (PapaParse 스트리밍)
+- **Service Worker 강제 리로드 루프 제거** — `skipWaiting()` + `controllerchange→reload()` 양쪽 제거
+- **숫자 인덱스 오탐 수정** — `parseFloat` → `/^-?\d+(\.\d+)?$/` 정규식으로 엄격한 숫자 판별
+
+## [1.1.2] - 2026-02-24
+
+### 추가됨 (Added)
+- **Web Worker 파싱** — `js/workers/parseWorker.js` 신규, SheetJS 동기 파싱을 워커 스레드로 격리
+- **이진탐색 범위 검색** — O(N) 풀스캔 → O(log N) 이진탐색 (`findCellsInRange`)
+- **Service Worker 업데이트 감지** — 새 버전 설치 시 토스트 안내
+
+### 수정됨 (Fixed)
+- **스택 안전 캐시** — `push(...chunk)` → for-push 패턴으로 call stack 한계 초과 방지
+
+## [1.1.1] - 2026-02-24
+
+### 수정됨 (Fixed)
+- **BM25 TF 계산 버그** — `tokenize` (Set) → `tokenizeToArray` (Array)로 중복 허용
+- **Fuse.js 어휘 필터링** — 의미 있는 토큰만 필터링 (2~20자, 순수 숫자 제외), 상한 100K
+- **detectLang CJK 혼합** — 전체 순회로 CJK 우선 판별, 한글 조기 리턴 제거
+
+## [1.1.0] - 2026-02-24
+
+### 추가됨 (Added)
+- **CJK 토큰화** — Intl.Segmenter 기반 중국어/일본어 분절 처리
+- **폴더 드래그 앤 드롭** — 폴더 재귀 탐색, `.xlsx/.xls/.csv` 필터링
+
 ## [1.0.0] - 2026-02-24
 
 ### 추가됨 (Added)
