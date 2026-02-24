@@ -31,21 +31,30 @@ const HAS_SEGMENTER = typeof Intl !== 'undefined' && typeof Intl.Segmenter === '
 const _segmenters = {};
 
 /**
- * 텍스트의 주요 언어를 간이 판별합니다.
+ * [v1.1.1] 텍스트의 주요 언어를 간이 판별합니다.
+ * 혼합 텍스트("東京都홍길동") 시 CJK를 우선 판별합니다.
+ * 한글만 있으면 'ko', 히라가나/가타카나가 있으면 'ja', 한자만 있으면 'zh'.
  * @param {string} text
  * @returns {'ja'|'zh'|'ko'|'other'}
  */
 function detectLang(text) {
     let hasCJK = false;
     let hasHiraganaKatakana = false;
+    let hasHangul = false;
+    // [v1.1.1 Fix] 전체 순회 — 한글 조기 리턴 제거
+    // 혼합 텍스트에서 CJK 문자가 있으면 Segmenter를 가동해야 하므로
+    // 끝까지 순회하여 모든 문자 유형을 파악합니다.
     for (const ch of text) {
         const c = ch.charCodeAt(0);
         if (c >= 0x3040 && c <= 0x30FF) hasHiraganaKatakana = true;
         if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)) hasCJK = true;
-        if (isHangulSyllable(ch)) return 'ko'; // 한글이면 즉시 한국어 리턴
+        if (isHangulSyllable(ch)) hasHangul = true;
     }
+    // CJK/히라가나가 있으면 한글 여부와 무관하게 해당 언어 반환
+    // → Segmenter가 CJK 부분을 정상 분할하고, 한글은 별도 처리됨
     if (hasHiraganaKatakana) return 'ja';
     if (hasCJK) return 'zh';
+    if (hasHangul) return 'ko';
     return 'other';
 }
 
@@ -99,9 +108,9 @@ function bigramTokenize(text) {
 }
 
 /**
- * 텍스트를 검색용 토큰으로 분리합니다.
- * [v1.1.0] CJK 토큰화 추가 — 중국어/일본어 텍스트에 대해
- * Intl.Segmenter 또는 Bigram을 적용하여 의미 단위로 분할합니다.
+ * 텍스트를 검색용 토큰으로 분리합니다 (고유 토큰, Set 반환).
+ * 인버티드 인덱스 구축에 사용합니다. (중복 불필요)
+ * [v1.1.0] CJK 토큰화 추가
  * @param {string} text - 정규화된 텍스트
  * @returns {Set<string>} 토큰 집합
  */
@@ -367,7 +376,40 @@ export class SearchIndex {
     }
 
     /**
+     * [v1.1.1] BM25 코퍼스용 토큰화 (중복 허용 Array 반환)
+     * Set 기반 tokenize()와 달리 동일 단어의 반복을 유지하여
+     * BM25의 TF(Term Frequency) 계산이 정상 작동하도록 합니다.
+     * @param {string} text
+     * @returns {string[]} 토큰 배열 (중복 유지)
+     */
+    static tokenizeToArray(text) {
+        const tokens = [];
+        if (!text) return tokens;
+
+        const words = text.split(TOKEN_SPLIT_RE);
+        for (const w of words) {
+            const trimmed = w.trim();
+            if (trimmed.length > 0) {
+                tokens.push(trimmed);
+
+                // CJK 문자 포함 시 추가 토큰화 (중복 허용)
+                if (CJK_RANGE_RE.test(trimmed)) {
+                    const lang = detectLang(trimmed);
+                    if (lang === 'ja' || lang === 'zh') {
+                        const cjkTokens = segmentCJK(trimmed, lang);
+                        for (const ct of cjkTokens) {
+                            if (ct.length > 0) tokens.push(ct);
+                        }
+                    }
+                }
+            }
+        }
+        return tokens;
+    }
+
+    /**
      * BM25 인덱스를 (재)구축합니다.
+     * [v1.1.1 Fix] tokenizeToArray() 사용하여 TF(용어 빈도) 정상 반영
      * 행 단위로 토큰화하여 관련도 랭킹에 사용.
      */
     buildBM25() {
@@ -377,13 +419,8 @@ export class SearchIndex {
         for (const [rowKey, rowData] of this.rows) {
             // 행의 모든 셀 값을 결합하여 하나의 "문서"로 취급
             const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
-
-            // [v1.1.0] CJK 대응: tokenize() 함수 기반으로 BM25 코퍼스 생성
-            const tokenSet = tokenize(rowText);
-            // 전체 텍스트 제거 (BM25에서 무의미하게 큰 토큰)
-            tokenSet.delete(rowText);
-            const tokens = [...tokenSet].filter(t => t.length > 0);
-
+            // [v1.1.1] Array 기반 토큰화로 TF 보존
+            const tokens = SearchIndex.tokenizeToArray(rowText);
             corpus.push(tokens);
             this._bm25RowKeys.push(rowKey);
         }
@@ -409,10 +446,8 @@ export class SearchIndex {
             return new Map();
         }
 
-        // [v1.1.0] CJK 대응: 쿼리도 tokenize()로 분할
-        const queryTokenSet = tokenize(query.toLowerCase());
-        queryTokenSet.delete(query.toLowerCase());
-        const tokens = [...queryTokenSet].filter(t => t.length > 0);
+        // [v1.1.1 Fix] Array 기반 토큰화로 TF 보존
+        const tokens = SearchIndex.tokenizeToArray(query.toLowerCase());
         const scores = this._bm25.getScores(tokens);
 
         const result = new Map();

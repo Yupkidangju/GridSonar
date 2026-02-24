@@ -526,13 +526,21 @@ async function updateFuseInstance() {
         const FuseModule = await import('https://esm.sh/fuse.js@7.0.0');
         const Fuse = FuseModule.default || FuseModule;
 
-        // 어휘 목록을 Fuse.js에 등록
-        const vocabList = [...state.index.vocabulary].slice(0, 50000); // 성능 제한
+        // [v1.1.1 Fix] 퍼지 검색에 의미 있는 토큰만 필터링
+        // - 1글자 토큰 제외 (CJK 유니그램 등 오타 매칭 무의미)
+        // - 순수 숫자 제외 (범위 검색으로 처리)
+        // - 20자 초과 제외 (셀 전체 텍스트 등 노이즈)
+        // - 상한선 100K (기존 50K에서 확대, Fuse.js 성능 보장)
+        const vocabList = [...state.index.vocabulary]
+            .filter(t => t.length >= 2 && t.length <= 20 && !/^\d+$/.test(t))
+            .slice(0, 100000);
+
         state.fuseInstance = new Fuse(vocabList, {
             threshold: 0.4,
             distance: 100,
             includeScore: true,
         });
+        logger.info(`Fuse.js 어휘 등록: ${vocabList.length}개 (전체 ${state.index.vocabulary.size}개)`);
     } catch (err) {
         logger.warn('Fuse.js 로드 실패 (퍼지 검색 비활성화):', err);
         state.fuseInstance = null;
