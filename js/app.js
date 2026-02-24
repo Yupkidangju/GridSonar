@@ -457,70 +457,79 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
         worker.postMessage({ type: 'parse', id, fileName: file.name, fileType, data }, transferList);
 
         await new Promise((resolve, reject) => {
-            worker.onmessage = async (e) => {
-                const msg = e.data;
-                if (msg.id !== id) return;
+            // [v1.1.6 Fix] Promise Queue — 메시지 순차 처리 강제
+            // async onmessage에서 await 중 다음 메시지가 도잩하면
+            // cacheWriter 중복 생성/cellBuffer 꽌임 레이스 컨디션 발생.
+            // Promise를 체이닝하여 이전 메시지 처리가 끝난 후에만 다음을 처리.
+            let messageQueue = Promise.resolve();
 
-                switch (msg.type) {
-                    case 'chunk': {
-                        const { sheetName, headers, rows, offset } = msg;
-                        state.index.addDataChunk(fileKey, file.name, sheetName, headers, rows, offset);
+            worker.onmessage = (e) => {
+                messageQueue = messageQueue.then(async () => {
+                    const msg = e.data;
+                    if (msg.id !== id) return;
 
-                        if (!fileInfo.sheets.includes(sheetName)) {
-                            fileInfo.sheets.push(sheetName);
-                        }
-                        if (!headersForCache[sheetName]) {
-                            headersForCache[sheetName] = headers;
-                        }
+                    switch (msg.type) {
+                        case 'chunk': {
+                            const { sheetName, headers, rows, offset } = msg;
+                            state.index.addDataChunk(fileKey, file.name, sheetName, headers, rows, offset);
 
-                        // [v1.1.5] 캐시 버퍼에 셀 수집 → 임계값 도달 시 IndexedDB로 플러시
-                        for (let ri = 0; ri < rows.length; ri++) {
-                            for (let ci = 0; ci < headers.length; ci++) {
-                                const val = rows[ri][ci];
-                                if (val && val !== '' && val !== 'nan' && val !== 'None' && val !== 'undefined') {
-                                    cellBuffer.push({
-                                        sheetName, rowIdx: offset + ri,
-                                        colIdx: ci, colName: headers[ci], value: val
-                                    });
+                            if (!fileInfo.sheets.includes(sheetName)) {
+                                fileInfo.sheets.push(sheetName);
+                            }
+                            if (!headersForCache[sheetName]) {
+                                headersForCache[sheetName] = headers;
+                            }
+
+                            for (let ri = 0; ri < rows.length; ri++) {
+                                for (let ci = 0; ci < headers.length; ci++) {
+                                    const val = rows[ri][ci];
+                                    if (val && val !== '' && val !== 'nan' && val !== 'None' && val !== 'undefined') {
+                                        cellBuffer.push({
+                                            sheetName, rowIdx: offset + ri,
+                                            colIdx: ci, colName: headers[ci], value: val
+                                        });
+                                    }
                                 }
                             }
-                        }
 
-                        // 버퍼가 차면 IndexedDB로 플러시
-                        if (cellBuffer.length >= CACHE_FLUSH_SIZE) {
-                            if (!cacheWriter) {
-                                cacheWriter = await cache.beginCacheWrite(
-                                    file.name, file.lastModified, file.size, headersForCache
-                                );
+                            if (cellBuffer.length >= CACHE_FLUSH_SIZE) {
+                                if (!cacheWriter) {
+                                    cacheWriter = await cache.beginCacheWrite(
+                                        file.name, file.lastModified, file.size, headersForCache
+                                    );
+                                }
+                                await cacheWriter.appendChunk(cellBuffer.splice(0));
                             }
-                            await cacheWriter.appendChunk(cellBuffer.splice(0));
-                        }
 
-                        totalRows += rows.length;
-                        renderFileTree();
-                        break;
+                            totalRows += rows.length;
+                            renderFileTree();
+                            break;
+                        }
+                        case 'progress':
+                            setStatus(msg.message, true, msg.percent);
+                            break;
+                        case 'complete':
+                            fileInfo.status = 'ready';
+                            fileInfo.totalRows = msg.totalRows;
+                            fileInfo.worker = null;
+                            renderFileTree();
+                            worker.terminate();
+                            resolve();
+                            break;
+                        case 'error':
+                            fileInfo.status = 'error';
+                            fileInfo.worker = null;
+                            renderFileTree();
+                            showToast(`⚠️ ${msg.message}`, 'error');
+                            logger.error(msg.message);
+                            worker.terminate();
+                            reject(new Error(msg.message));
+                            break;
                     }
-                    case 'progress':
-                        setStatus(msg.message, true, msg.percent);
-                        break;
-                    case 'complete':
-                        fileInfo.status = 'ready';
-                        fileInfo.totalRows = msg.totalRows;
-                        fileInfo.worker = null;
-                        renderFileTree();
-                        worker.terminate();
-                        resolve();
-                        break;
-                    case 'error':
-                        fileInfo.status = 'error';
-                        fileInfo.worker = null;
-                        renderFileTree();
-                        showToast(`⚠️ ${msg.message}`, 'error');
-                        logger.error(msg.message);
-                        worker.terminate();
-                        reject(new Error(msg.message));
-                        break;
-                }
+                }).catch(err => {
+                    logger.error('메시지 처리 중 오류:', err);
+                    reject(err);
+                });
             };
 
             worker.onerror = (err) => {
@@ -709,6 +718,14 @@ async function updateFuseInstance() {
 function performSearch() {
     const query = dom.searchInput.value.trim();
     if (!query) return;
+
+    // [v1.1.6 Fix] 인덱싱 중 검색 차단
+    // _bm25Dirty=true 상태에서 검색하면 buildBM25()가 동기 실행되어
+    // Worker로 격리한 UI 비블로킹이 무력화됨
+    if (state.isIndexing) {
+        showToast('⏳ 데이터를 인덱싱 중입니다. 잠시만 기다려주세요.', 'warning');
+        return;
+    }
 
     if (state.index.totalCells === 0) {
         showToast('📂 먼저 파일을 추가하고 인덱싱을 완료해 주세요', 'warning');
