@@ -21,12 +21,15 @@ import { logger } from './utils/logger.js';
 // ── 전역 상태 ──
 const state = {
     index: new SearchIndex(),
-    files: new Map(),          // fileName → { file, status, sheets }
-    results: [],               // 현재 검색 결과
-    filteredResults: [],        // 필터링된 결과
-    recentKeywords: [],         // 최근 검색어
-    isIndexing: false,
-    fuseInstance: null,          // Fuse.js 인스턴스 (지연 로드)
+    files: new Map(),
+    results: [],
+    filteredResults: [],
+    recentKeywords: [],
+    // [v1.1.7 Fix] Boolean Trap 방지 — 카운터 기반 동시성 제어
+    // 연속 드롭 시 두 번째 배치가 false로 덮어쓰는 문제 방지
+    indexingJobs: 0,
+    get isIndexing() { return this.indexingJobs > 0; },
+    fuseInstance: null,
     currentQuery: '',
 };
 
@@ -355,11 +358,10 @@ async function handleFileDrop(files) {
     dom.dropzone.style.display = 'none';
     dom.fileTree.style.display = 'block';
 
-    state.isIndexing = true;
+    state.indexingJobs++;
     const isBatch = files.length > 1;
 
     for (const file of files) {
-        // [v1.1.4] 고유 파일키로 중복 판별 (file.name만으로는 다른 경로의 동명 파일 충돌)
         const fileKey = `${file.name}__${file.lastModified}__${file.size}`;
         if (state.files.has(fileKey)) continue;
 
@@ -370,13 +372,12 @@ async function handleFileDrop(files) {
             status: 'pending',
             sheets: [],
             totalRows: 0,
-            worker: null  // [v1.1.4] 실행 중 워커 참조 (좀비 워커 방지)
+            worker: null
         });
         renderFileTree();
         await indexFile(file, fileKey, isBatch);
     }
 
-    // [v1.1.4] 배치 완료 후 단 1회 리빌드
     if (isBatch) {
         setStatus('BM25 인덱스 구축 중...', true, 95);
         await new Promise(resolve => setTimeout(() => {
@@ -387,7 +388,7 @@ async function handleFileDrop(files) {
         updateStats();
         setStatus(`✅ 전체 인덱싱 완료 (${state.index.totalFiles}파일, ${state.index.totalRows.toLocaleString()}행)`, false);
     }
-    state.isIndexing = false;
+    state.indexingJobs--;
 }
 
 /**
@@ -536,6 +537,9 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
                 logger.warn('Worker 실패, 폴백 모드:', err.message);
                 fileInfo.worker = null;
                 worker.terminate();
+                // [v1.1.7 Fix] 롬백: 반쪽짜리 데이터 제거 후 폴백 실행
+                // 워커가 5만 행 적재 후 크래시 → 폴백이 0행부터 재시작 → 중복 방지
+                state.index.removeFile(fileKey);
                 indexFileFallback(file, fileKey, fileInfo, isBatch).then(resolve).catch(reject);
             };
         });
