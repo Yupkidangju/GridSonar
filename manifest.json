@@ -1,0 +1,29 @@
+{
+    "name": "GridSonar — Smart Data Search",
+    "short_name": "GridSonar",
+    "description": "대용량 Excel/CSV 파일 검색 도구. 서버 없이 브라우저에서 100% 독립 동작하는 PWA.",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "orientation": "any",
+    "theme_color": "#0d1117",
+    "background_color": "#0d1117",
+    "lang": "ko",
+    "categories": [
+        "utilities",
+        "productivity"
+    ],
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%230d1117'/><text x='96' y='130' text-anchor='middle' font-size='120'>◎</text></svg>",
+            "sizes": "192x192",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230d1117'/><text x='256' y='350' text-anchor='middle' font-size='320'>◎</text></svg>",
+            "sizes": "512x512",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}

@@ -1,0 +1,322 @@
+/**
+ * [v1.0.0] 4계층 다중 검색 엔진
+ * 쿼리 파싱, 정확 매칭, 퍼지 매칭, 초성 검색, BM25 랭킹을 통합하여
+ * 사용자가 단순히 텍스트를 입력하면 최적의 결과를 반환합니다.
+ * 원본: searcher.py (MultiLayerSearcher) → 1:1 포팅
+ */
+
+import { parseQuery } from './queryParser.js';
+import { isChosungQuery, extractChosung } from './jamo.js';
+
+// 검색 계층별 기본 가중치
+const WEIGHT_EXACT = 1.0;
+const WEIGHT_CHOSUNG = 0.85;
+const WEIGHT_FUZZY = 0.7;
+const WEIGHT_BM25 = 0.3;
+const WEIGHT_RANGE = 0.9;
+
+/**
+ * 행별 점수를 누적 갱신합니다. 최고 유사도와 매칭 유형을 추적.
+ * @param {Map} rowScores - 행 키 → 스코어 정보 Map
+ * @param {string} rowKey - 행 키
+ * @param {number} score - 점수
+ * @param {string} matchType - 매칭 유형
+ * @param {number} similarity - 유사도
+ * @param {Object} match - 매칭 상세
+ */
+function updateRowScore(rowScores, rowKey, score, matchType, similarity, match) {
+    if (!rowScores.has(rowKey)) {
+        rowScores.set(rowKey, {
+            score,
+            matchType,
+            similarity,
+            matches: [match]
+        });
+    } else {
+        const entry = rowScores.get(rowKey);
+        entry.score = Math.max(entry.score, score);
+        if (similarity > entry.similarity) {
+            entry.similarity = similarity;
+            entry.matchType = matchType;
+        }
+        // 중복 매칭 방지 (같은 셀은 1회만)
+        const exists = entry.matches.some(
+            m => m.colName === match.colName && m.cellValue === match.cellValue
+        );
+        if (!exists) {
+            entry.matches.push(match);
+        }
+    }
+}
+
+/**
+ * 검색을 실행하고 점수순으로 정렬된 결과를 반환합니다.
+ * @param {import('./searchIndex.js').SearchIndex} index - 검색 인덱스
+ * @param {string} rawQuery - 사용자 입력 검색어
+ * @param {Object} [options={}]
+ * @param {number} [options.minSimilarity=0.6] - 퍼지 매칭 최소 유사도
+ * @param {number} [options.maxResults=500] - 최대 결과 수
+ * @param {Object|null} [options.fuseInstance=null] - Fuse.js 인스턴스 (외부 주입)
+ * @returns {Array<Object>} 검색 결과 배열
+ */
+export function search(index, rawQuery, options = {}) {
+    const {
+        minSimilarity = 0.6,
+        maxResults = 500,
+        fuseInstance = null
+    } = options;
+
+    const query = parseQuery(rawQuery);
+
+    if (query.keywords.length === 0 && query.ranges.length === 0) {
+        return [];
+    }
+
+    // rowKey → { score, matchType, similarity, matches[] } 누적 맵
+    const rowScores = new Map();
+
+    // 각 키워드에 대해 다중 계층 검색 수행
+    for (const keyword of query.keywords) {
+        // 계층 1: 정확 매칭 (인버티드 인덱스)
+        _exactSearch(index, keyword, rowScores);
+
+        // 계층 2: 초성 검색 (입력이 초성인 경우)
+        if (isChosungQuery(keyword)) {
+            _chosungSearch(index, keyword, rowScores);
+        }
+
+        // 계층 3: 퍼지 매칭 (Fuse.js 사용 시)
+        if (fuseInstance) {
+            _fuzzySearch(index, keyword, rowScores, minSimilarity, fuseInstance);
+        }
+    }
+
+    // 범위 검색
+    for (const [minVal, maxVal] of query.ranges) {
+        _rangeSearch(index, minVal, maxVal, rowScores);
+    }
+
+    // 계층 4: BM25 관련도 점수 가산
+    if (query.keywords.length > 0) {
+        const bm25Query = query.keywords.join(' ');
+        _applyBM25(index, bm25Query, rowScores);
+    }
+
+    // 제외 조건 적용
+    if (query.excludes.length > 0) {
+        _applyExcludes(index, query.excludes, rowScores);
+    }
+
+    // AND 조건 적용: 모든 키워드가 행에 포함되어야 함 (2개 이상일 때)
+    if (query.keywords.length > 1) {
+        _applyAndCondition(index, query.keywords, rowScores);
+    }
+
+    // 결과 생성 및 정렬
+    const results = [];
+    for (const [rowKey, info] of rowScores) {
+        const rowData = index.rows.get(rowKey);
+        if (!rowData) continue;
+
+        results.push({
+            row: rowData,
+            score: info.score,
+            matchType: info.matchType,
+            similarity: info.similarity,
+            matches: info.matches || []
+        });
+    }
+
+    // 점수 내림차순 정렬
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, maxResults);
+}
+
+/**
+ * 계층 1: 인버티드 인덱스 기반 정확/부분 매칭
+ */
+function _exactSearch(index, keyword, rowScores) {
+    const cellIndices = index.findCellsContaining(keyword);
+
+    for (const cellIdx of cellIndices) {
+        const cell = index.cells[cellIdx];
+        if (cell === null) continue;
+
+        const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+
+        // 완전 일치 vs 부분 일치 구분
+        const valLower = cell.value.toLowerCase();
+        const kwLower = keyword.toLowerCase();
+        let sim;
+        if (valLower === kwLower) {
+            sim = 1.0;
+        } else {
+            sim = kwLower.length > 0 && valLower.includes(kwLower) ? 0.9 : 0.8;
+        }
+
+        const score = WEIGHT_EXACT * sim;
+        const match = {
+            colName: cell.colName,
+            cellValue: cell.value,
+            matchType: 'exact',
+            similarity: sim
+        };
+        updateRowScore(rowScores, rowKey, score, 'exact', sim, match);
+    }
+}
+
+/**
+ * 계층 2: 한글 초성 인덱스 기반 검색
+ */
+function _chosungSearch(index, keyword, rowScores) {
+    const cellIndices = index.findCellsByChosung(keyword);
+
+    for (const cellIdx of cellIndices) {
+        const cell = index.cells[cellIdx];
+        if (cell === null) continue;
+
+        const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+
+        // 초성 유사도 계산
+        const textChosung = extractChosung(cell.value);
+        const sim = textChosung.includes(keyword) ? 0.85 : 0.7;
+
+        const score = WEIGHT_CHOSUNG * sim;
+        const match = {
+            colName: cell.colName,
+            cellValue: cell.value,
+            matchType: 'chosung',
+            similarity: sim
+        };
+        updateRowScore(rowScores, rowKey, score, 'chosung', sim, match);
+    }
+}
+
+/**
+ * 계층 3: Fuse.js 기반 퍼지 매칭
+ */
+function _fuzzySearch(index, keyword, rowScores, minSimilarity, fuseInstance) {
+    if (!fuseInstance) return;
+
+    const kwLower = keyword.toLowerCase();
+    const fuseResults = fuseInstance.search(kwLower, { limit: 50 });
+
+    for (const result of fuseResults) {
+        // Fuse.js score: 0 = 완벽 매치, 1 = 불일치 → 반전하여 0~1 유사도로 변환
+        const sim = 1 - (result.score || 0);
+        if (sim < minSimilarity) continue;
+
+        const matchedToken = result.item;
+        // 정확 매칭과 중복되는 결과는 건너뛰기
+        if (matchedToken === kwLower) continue;
+
+        const cellIndices = index.invertedIndex.get(matchedToken);
+        if (!cellIndices) continue;
+
+        for (const cellIdx of cellIndices) {
+            const cell = index.cells[cellIdx];
+            if (cell === null) continue;
+
+            const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+            const weightedScore = WEIGHT_FUZZY * sim;
+            const match = {
+                colName: cell.colName,
+                cellValue: cell.value,
+                matchType: 'fuzzy',
+                similarity: sim
+            };
+            updateRowScore(rowScores, rowKey, weightedScore, 'fuzzy', sim, match);
+        }
+    }
+}
+
+/**
+ * 숫자 범위 검색
+ */
+function _rangeSearch(index, minVal, maxVal, rowScores) {
+    for (let i = 0; i < index.cells.length; i++) {
+        const cell = index.cells[i];
+        if (cell === null) continue;
+
+        // 쉼표 제거 후 숫자 변환 시도
+        const cleaned = cell.value.replace(/,/g, '').trim();
+        const numVal = parseFloat(cleaned);
+        if (isNaN(numVal)) continue;
+
+        if (numVal >= minVal && numVal <= maxVal) {
+            const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+            const match = {
+                colName: cell.colName,
+                cellValue: cell.value,
+                matchType: 'range',
+                similarity: 0.9
+            };
+            updateRowScore(rowScores, rowKey, WEIGHT_RANGE, 'range', 0.9, match);
+        }
+    }
+}
+
+/**
+ * 계층 4: BM25 관련도 점수를 기존 결과에 가산
+ */
+function _applyBM25(index, query, rowScores) {
+    const bm25Scores = index.getBM25Scores(query);
+    if (bm25Scores.size === 0) return;
+
+    // BM25 점수 정규화 (최대값 기준)
+    let maxBM25 = 0;
+    for (const score of bm25Scores.values()) {
+        if (score > maxBM25) maxBM25 = score;
+    }
+    if (maxBM25 === 0) return;
+
+    for (const [rowKey, bm25Score] of bm25Scores) {
+        if (rowScores.has(rowKey)) {
+            const normalized = (bm25Score / maxBM25) * WEIGHT_BM25;
+            rowScores.get(rowKey).score += normalized;
+        }
+    }
+}
+
+/**
+ * 제외 조건: 제외 키워드가 포함된 행을 결과에서 제거
+ */
+function _applyExcludes(index, excludes, rowScores) {
+    const keysToRemove = [];
+    for (const [rowKey] of rowScores) {
+        const rowData = index.rows.get(rowKey);
+        if (!rowData) continue;
+        const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
+        for (const ex of excludes) {
+            if (rowText.includes(ex.toLowerCase())) {
+                keysToRemove.push(rowKey);
+                break;
+            }
+        }
+    }
+    for (const key of keysToRemove) {
+        rowScores.delete(key);
+    }
+}
+
+/**
+ * AND 조건: 모든 키워드가 행에 포함되어야 결과에 유지
+ */
+function _applyAndCondition(index, keywords, rowScores) {
+    const keysToRemove = [];
+    for (const [rowKey] of rowScores) {
+        const rowData = index.rows.get(rowKey);
+        if (!rowData) continue;
+        const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
+        const allFound = keywords.every(kw => rowText.includes(kw.toLowerCase()));
+        if (!allFound) {
+            keysToRemove.push(rowKey);
+        }
+    }
+    for (const key of keysToRemove) {
+        rowScores.delete(key);
+    }
+}
+
+// 가중치 상수 내보내기 (테스트/디버깅용)
+export { WEIGHT_EXACT, WEIGHT_CHOSUNG, WEIGHT_FUZZY, WEIGHT_BM25, WEIGHT_RANGE };

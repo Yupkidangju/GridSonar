@@ -1,0 +1,206 @@
+/* ============================================================
+   [v1.0.0] GridSonar — Layout (메인 레이아웃, 스플리터)
+   ============================================================ */
+
+/* --- 앱 셸 --- */
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* --- 헤더 --- */
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-lg);
+    height: var(--header-height);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+    z-index: var(--z-sticky);
+    gap: var(--space-md);
+}
+
+.app-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    user-select: none;
+}
+
+.app-logo-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent-gradient);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-lg);
+    animation: gradientShift 6s ease infinite;
+    background-size: 200% 200%;
+}
+
+.app-logo-text {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    background: var(--accent-gradient);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 6s ease infinite;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* --- 메인 콘텐츠 --- */
+.app-main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* --- 사이드바 --- */
+.sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-min);
+    max-width: var(--sidebar-max);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-primary);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: width var(--transition-base);
+}
+
+.sidebar-header {
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.sidebar-title {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-sm);
+}
+
+/* --- 리사이즈 핸들 --- */
+.resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    transition: background var(--transition-fast);
+    position: relative;
+}
+
+.resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 1px;
+    width: 2px;
+    background: transparent;
+    transition: background var(--transition-fast);
+}
+
+.resize-handle:hover::after,
+.resize-handle.active::after {
+    background: var(--accent-primary);
+}
+
+/* --- 주 콘텐츠 영역 --- */
+.content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+
+/* --- 검색 영역 --- */
+.search-area {
+    padding: var(--space-lg) var(--space-xl);
+    flex-shrink: 0;
+}
+
+/* --- 결과 영역 --- */
+.results-area {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0 var(--space-xl) var(--space-lg);
+}
+
+/* --- 상태바 --- */
+.app-statusbar {
+    display: flex;
+    align-items: center;
+    padding: var(--space-xs) var(--space-lg);
+    height: var(--statusbar-height);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    gap: var(--space-md);
+}
+
+.statusbar-left {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.statusbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+/* --- 반응형 --- */
+@media (max-width: 768px) {
+    .sidebar {
+        position: absolute;
+        left: 0;
+        top: var(--header-height);
+        height: calc(100vh - var(--header-height) - var(--statusbar-height));
+        z-index: var(--z-dropdown);
+        transform: translateX(-100%);
+        transition: transform var(--transition-base);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .resize-handle {
+        display: none;
+    }
+}

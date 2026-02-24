@@ -1,0 +1,158 @@
+/* ============================================================
+   [v1.0.0] GridSonar — CSS Design Tokens (Custom Properties)
+   Windows 11 Fluent Design 기반 다크/라이트 테마 토큰
+   ============================================================ */
+
+:root {
+  /* ── 다크 테마 (기본) ── */
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-surface: #1c2128;
+  --bg-card: #21262d;
+  --bg-card-hover: #272c35;
+  --bg-input: #0d1117;
+  --bg-overlay: rgba(0, 0, 0, 0.65);
+
+  --border-primary: #30363d;
+  --border-subtle: #21262d;
+  --border-focus: #58a6ff;
+
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-tertiary: #6e7681;
+  --text-inverse: #0d1117;
+  --text-link: #58a6ff;
+
+  /* 액센트 컬러 — 시안-블루 그라디언트 계열 */
+  --accent-primary: #58a6ff;
+  --accent-primary-hover: #79c0ff;
+  --accent-gradient: linear-gradient(135deg, #58a6ff 0%, #a371f7 50%, #f778ba 100%);
+  --accent-glow: rgba(88, 166, 255, 0.15);
+
+  /* 매칭 유형 컬러 */
+  --match-exact: #3fb950;
+  --match-exact-bg: rgba(63, 185, 80, 0.12);
+  --match-fuzzy: #d29922;
+  --match-fuzzy-bg: rgba(210, 153, 34, 0.12);
+  --match-chosung: #a371f7;
+  --match-chosung-bg: rgba(163, 113, 247, 0.12);
+  --match-range: #f778ba;
+  --match-range-bg: rgba(247, 120, 186, 0.12);
+
+  /* 상태 */
+  --success: #3fb950;
+  --success-bg: rgba(63, 185, 80, 0.12);
+  --warning: #d29922;
+  --warning-bg: rgba(210, 153, 34, 0.12);
+  --error: #f85149;
+  --error-bg: rgba(248, 81, 73, 0.12);
+  --info: #58a6ff;
+
+  /* 그림자 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(88, 166, 255, 0.15);
+
+  /* 간격 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* 둥글기 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* 타이포그래피 */
+  --font-sans: 'Inter', 'Pretendard', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* 트랜지션 */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* z-index 계층 */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+  --z-tooltip: 500;
+
+  /* 레이아웃 */
+  --sidebar-width: 280px;
+  --sidebar-min: 220px;
+  --sidebar-max: 360px;
+  --header-height: 56px;
+  --statusbar-height: 36px;
+}
+
+/* ── 라이트 테마 ── */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-surface: #ffffff;
+  --bg-card: #f6f8fa;
+  --bg-card-hover: #eef1f4;
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+
+  --border-primary: #d0d7de;
+  --border-subtle: #eaeef2;
+  --border-focus: #0969da;
+
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --text-tertiary: #8b949e;
+  --text-inverse: #ffffff;
+  --text-link: #0969da;
+
+  --accent-primary: #0969da;
+  --accent-primary-hover: #0550ae;
+  --accent-gradient: linear-gradient(135deg, #0969da 0%, #8250df 50%, #bf3989 100%);
+  --accent-glow: rgba(9, 105, 218, 0.1);
+
+  --match-exact: #1a7f37;
+  --match-exact-bg: rgba(26, 127, 55, 0.08);
+  --match-fuzzy: #9a6700;
+  --match-fuzzy-bg: rgba(154, 103, 0, 0.08);
+  --match-chosung: #8250df;
+  --match-chosung-bg: rgba(130, 80, 223, 0.08);
+  --match-range: #bf3989;
+  --match-range-bg: rgba(191, 57, 137, 0.08);
+
+  --success: #1a7f37;
+  --success-bg: rgba(26, 127, 55, 0.08);
+  --warning: #9a6700;
+  --warning-bg: rgba(154, 103, 0, 0.08);
+  --error: #cf222e;
+  --error-bg: rgba(207, 34, 46, 0.08);
+  --info: #0969da;
+
+  --shadow-sm: 0 1px 3px rgba(31, 35, 40, 0.08);
+  --shadow-md: 0 3px 8px rgba(31, 35, 40, 0.12);
+  --shadow-lg: 0 8px 24px rgba(31, 35, 40, 0.15);
+  --shadow-glow: 0 0 20px rgba(9, 105, 218, 0.1);
+}

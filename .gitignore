@@ -1,0 +1,31 @@
+# .gitignore — GridSonar v1.0.0
+# D3D Protocol §7: Git 허용 파일 3종(README, CHANGELOG, BUILD_GUIDE) 외 .md 제외
+
+# === D3D 문서 (로컬 전용, Git 미포함) ===
+*.md
+!README.md
+!CHANGELOG.md
+!BUILD_GUIDE.md
+
+# === OS 생성 파일 ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# === IDE/에디터 ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === 임시 파일 ===
+*.tmp
+*.temp
+*.log
+
+# === 테스트 데이터 ===
+test_data*
+
+# === Antigravity 아카이브 (로컬 전용) ===
+.antigravity/
