@@ -307,12 +307,16 @@ export class SearchIndex {
                     }
                 }
 
-                // [v1.1.2] 숫자 인덱스: 숫자로 변환 가능한 값 저장
+                // [v1.1.3 Fix] 숫자 인덱스: 엄격한 숫자 판별
+                // parseFloat("123동") = 123 같은 오탐 방지를 위해
+                // 정규식으로 순수 숫자(음수, 소수점 허용)만 허용
                 const cleaned = value.replace(/,/g, '').trim();
-                const numVal = parseFloat(cleaned);
-                if (!isNaN(numVal) && isFinite(numVal)) {
-                    this._numericEntries.push({ numVal, cellIdx });
-                    this._numericSorted = false;
+                if (/^-?\d+(\.\d+)?$/.test(cleaned)) {
+                    const numVal = Number(cleaned);
+                    if (isFinite(numVal)) {
+                        this._numericEntries.push({ numVal, cellIdx });
+                        this._numericSorted = false;
+                    }
                 }
             }
 

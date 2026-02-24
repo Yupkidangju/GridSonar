@@ -3,7 +3,7 @@
  * 메인 스레드 블로킹 방지를 위해 파일 파싱을 별도 스레드에서 실행합니다.
  *
  * 통신 프로토콜:
- *   Main → Worker: { type:'parse', id, fileName, fileType, data(ArrayBuffer|string) }
+ *   Main → Worker: { type:'parse', id, fileName, fileType, data(File|ArrayBuffer) }
  *   Worker → Main: { type:'chunk',    id, sheetName, headers, rows, offset }
  *                   { type:'progress', id, message, percent }
  *                   { type:'complete', id, totalRows }
@@ -57,9 +57,10 @@ self.onmessage = async (e) => {
 
 /**
  * CSV 파싱 (PapaParse chunk 모드)
- * CSV 텍스트를 받아 청크 단위로 메인 스레드에 전달
+ * [v1.1.3 Fix] File(Blob) 객체를 직접 받아 PapaParse 스트리밍 처리.
+ * 메인 스레드에서 file.text()로 통째로 메모리에 올리지 않으므로 OOM 방지.
  */
-async function parseCSVInWorker(id, fileName, csvText) {
+async function parseCSVInWorker(id, fileName, fileOrBlob) {
     const PapaModule = await loadPapaParse();
     const sheetName = fileName;
     let totalRows = 0;
@@ -69,7 +70,7 @@ async function parseCSVInWorker(id, fileName, csvText) {
     const CHUNK_SIZE = 10000;
 
     return new Promise((resolve, reject) => {
-        PapaModule.parse(csvText, {
+        PapaModule.parse(fileOrBlob, {
             header: true,
             skipEmptyLines: true,
             chunk(results) {

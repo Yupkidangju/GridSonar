@@ -43,12 +43,14 @@ const CDN_PATTERNS = [
     'fonts.gstatic.com'
 ];
 
-// 설치: 정적 에셋 프리캐시
+// [v1.1.3] 설치: 정적 에셋 프리캐시
+// skipWaiting() 의도적으로 미사용:
+// 즉시 활성화되면 controllerchange→reload로 사용자 작업이 중단됨.
+// 새 워커는 모든 탭이 닫힌 후 자연스럽게 활성화됩니다.
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => cache.addAll(PRECACHE_URLS))
-            .then(() => self.skipWaiting())
     );
 });
 
