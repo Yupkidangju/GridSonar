@@ -176,6 +176,12 @@ export class SearchIndex {
         this._bm25RowKeys = [];
         this._bm25Dirty = true;
 
+        // [v1.1.2] 숫자 인덱스: 범위 검색 O(log N) 지원
+        // 정렬 전 원본: { numVal, cellIdx }[]
+        /** @type {Array<{numVal: number, cellIdx: number}>} */
+        this._numericEntries = [];
+        this._numericSorted = false;
+
         // 파일 관리
         /** @type {Set<string>} */
         this._indexedFiles = new Set();
@@ -204,6 +210,8 @@ export class SearchIndex {
         this._bm25 = null;
         this._bm25RowKeys = [];
         this._bm25Dirty = true;
+        this._numericEntries = [];
+        this._numericSorted = false;
         this._indexedFiles = new Set();
     }
 
@@ -298,6 +306,14 @@ export class SearchIndex {
                         this.chosungIndex.get(ct).add(cellIdx);
                     }
                 }
+
+                // [v1.1.2] 숫자 인덱스: 숫자로 변환 가능한 값 저장
+                const cleaned = value.replace(/,/g, '').trim();
+                const numVal = parseFloat(cleaned);
+                if (!isNaN(numVal) && isFinite(numVal)) {
+                    this._numericEntries.push({ numVal, cellIdx });
+                    this._numericSorted = false;
+                }
             }
 
             // 행 데이터 저장 (유효한 셀이 있는 경우만)
@@ -373,6 +389,50 @@ export class SearchIndex {
 
         this._indexedFiles.delete(filePath);
         this._bm25Dirty = true;
+
+        // [v1.1.2] 숫자 인덱스에서 제거된 셀 제거
+        this._numericEntries = this._numericEntries.filter(
+            e => !removeIndices.has(e.cellIdx)
+        );
+        this._numericSorted = false;
+    }
+
+    /**
+     * [v1.1.2] 숫자 인덱스를 정렬합니다 (최초 범위 검색 시 1회).
+     */
+    _ensureNumericSorted() {
+        if (!this._numericSorted) {
+            this._numericEntries.sort((a, b) => a.numVal - b.numVal);
+            this._numericSorted = true;
+        }
+    }
+
+    /**
+     * [v1.1.2] 범위 내 숫자를 가진 셀 인덱스를 이진 탐색으로 반환합니다.
+     * 기존 O(N) 풀스캔 → O(log N + K) (K = 결과 수)
+     * @param {number} minVal - 최솟값
+     * @param {number} maxVal - 최댓값
+     * @returns {Array<{numVal: number, cellIdx: number}>} 범위 내 항목
+     */
+    findCellsInRange(minVal, maxVal) {
+        this._ensureNumericSorted();
+        const entries = this._numericEntries;
+        if (entries.length === 0) return [];
+
+        // 이진 탐색: minVal 이상인 첫 번째 위치 찾기 (lower bound)
+        let lo = 0, hi = entries.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (entries[mid].numVal < minVal) lo = mid + 1;
+            else hi = mid;
+        }
+
+        // lo부터 maxVal 이하인 동안 수집
+        const result = [];
+        for (let i = lo; i < entries.length && entries[i].numVal <= maxVal; i++) {
+            result.push(entries[i]);
+        }
+        return result;
     }
 
     /**

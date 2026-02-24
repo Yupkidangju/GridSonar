@@ -152,7 +152,12 @@ export async function loadFileData(fileName, lastModified, fileSize) {
         const cells = [];
         for (let i = 0; i < chunkMeta.totalChunks; i++) {
             const chunk = await cellDataStore.getItem(`${key}__chunk_${i}`);
-            if (chunk) cells.push(...chunk);
+            // [v1.1.1 Fix] spread 대신 안전한 for-push (스택 오버플로우 방지)
+            if (chunk) {
+                for (let j = 0; j < chunk.length; j++) {
+                    cells.push(chunk[j]);
+                }
+            }
         }
 
         return { fileName, headers, cells };

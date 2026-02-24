@@ -8,7 +8,7 @@
  * - 기타: Network First
  */
 
-const CACHE_NAME = 'gridsonar-v1.0.0';
+const CACHE_NAME = 'gridsonar-v1.1.2';
 
 // 프리캐시할 정적 에셋
 const PRECACHE_URLS = [
@@ -31,6 +31,7 @@ const PRECACHE_URLS = [
     './js/utils/clipboard.js',
     './js/utils/i18n.js',
     './js/utils/logger.js',
+    './js/workers/parseWorker.js',
     './manifest.json'
 ];
 

@@ -10,7 +10,7 @@
 
 import { SearchIndex } from './core/searchIndex.js';
 import { search } from './core/searchEngine.js';
-import { parseFile } from './core/fileParser.js';
+// [v1.1.2] fileParser는 폴백에서 동적 import — Worker 우선 사용
 import * as cache from './core/cacheManager.js';
 import { getConfig, setConfig } from './utils/config.js';
 import { exportResults } from './utils/exporter.js';
@@ -353,6 +353,11 @@ async function handleFileDrop(files) {
     }
 }
 
+/**
+ * [v1.1.2] 파일 파싱 및 인덱싱
+ * Web Worker가 지원되면 파싱을 워커로 격리하여 UI 프리징 방지.
+ * Worker 미지원 시 기존 방식(메인 스레드 파싱)으로 폴백.
+ */
 async function indexFile(file) {
     const fileInfo = state.files.get(file.name);
     fileInfo.status = 'indexing';
@@ -366,7 +371,6 @@ async function indexFile(file) {
     if (cached) {
         const restored = await cache.loadFileData(file.name, file.lastModified, file.size);
         if (restored && restored.cells && restored.cells.length > 0) {
-            // 캐시에서 복원
             restoreFromCache(file.name, restored);
             fileInfo.status = 'ready';
             fileInfo.totalRows = restored.cells.length;
@@ -380,68 +384,106 @@ async function indexFile(file) {
         }
     }
 
-    // 직접 파싱 및 인덱싱
+    // Worker 지원 여부에 따라 분기
+    if (typeof Worker !== 'undefined') {
+        await indexFileViaWorker(file, fileInfo);
+    } else {
+        await indexFileFallback(file, fileInfo);
+    }
+}
+
+/**
+ * [v1.1.2] Web Worker 기반 파일 파싱
+ * 파싱(SheetJS 동기 연산)은 워커에서, 인덱싱은 청크 수신 시 메인 스레드에서 처리.
+ */
+async function indexFileViaWorker(file, fileInfo) {
     const cellsForCache = [];
     const headersForCache = {};
     let totalRows = 0;
 
     try {
-        await parseFile(file, {
-            onChunk(chunkData) {
-                const { sheetName, headers, rows, offset } = chunkData;
+        // Module Worker 생성
+        const worker = new Worker('./js/workers/parseWorker.js', { type: 'module' });
+        const id = `${file.name}_${Date.now()}`;
 
-                // 인덱스에 추가
-                state.index.addDataChunk(file.name, file.name, sheetName, headers, rows, offset);
+        // 파일 데이터를 적절한 형식으로 준비
+        const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+        const fileType = ext === '.csv' ? 'csv' : ext.replace('.', '');
+        let data;
+        if (fileType === 'csv') {
+            data = await file.text(); // CSV는 텍스트로
+        } else {
+            data = await file.arrayBuffer(); // Excel은 ArrayBuffer로
+        }
 
-                // 시트 목록 갱신
-                if (!fileInfo.sheets.includes(sheetName)) {
-                    fileInfo.sheets.push(sheetName);
-                }
+        // 워커에 파싱 요청 (ArrayBuffer는 Transferable로 전송)
+        const transferList = fileType === 'csv' ? [] : [data];
+        worker.postMessage({ type: 'parse', id, fileName: file.name, fileType, data }, transferList);
 
-                // 캐시용 데이터 수집
-                if (!headersForCache[sheetName]) {
-                    headersForCache[sheetName] = headers;
-                }
-                for (let ri = 0; ri < rows.length; ri++) {
-                    for (let ci = 0; ci < headers.length; ci++) {
-                        const val = rows[ri][ci];
-                        if (val && val !== '' && val !== 'nan' && val !== 'None' && val !== 'undefined') {
-                            cellsForCache.push({
-                                sheetName,
-                                rowIdx: offset + ri,
-                                colIdx: ci,
-                                colName: headers[ci],
-                                value: val
-                            });
+        // 워커 메시지 수신 → 인덱싱
+        await new Promise((resolve, reject) => {
+            worker.onmessage = (e) => {
+                const msg = e.data;
+                if (msg.id !== id) return;
+
+                switch (msg.type) {
+                    case 'chunk': {
+                        const { sheetName, headers, rows, offset } = msg;
+                        state.index.addDataChunk(file.name, file.name, sheetName, headers, rows, offset);
+
+                        if (!fileInfo.sheets.includes(sheetName)) {
+                            fileInfo.sheets.push(sheetName);
                         }
+
+                        if (!headersForCache[sheetName]) {
+                            headersForCache[sheetName] = headers;
+                        }
+                        for (let ri = 0; ri < rows.length; ri++) {
+                            for (let ci = 0; ci < headers.length; ci++) {
+                                const val = rows[ri][ci];
+                                if (val && val !== '' && val !== 'nan' && val !== 'None' && val !== 'undefined') {
+                                    cellsForCache.push({
+                                        sheetName, rowIdx: offset + ri,
+                                        colIdx: ci, colName: headers[ci], value: val
+                                    });
+                                }
+                            }
+                        }
+                        totalRows += rows.length;
+                        renderFileTree();
+                        break;
                     }
+                    case 'progress':
+                        setStatus(msg.message, true, msg.percent);
+                        break;
+                    case 'complete':
+                        fileInfo.status = 'ready';
+                        fileInfo.totalRows = msg.totalRows;
+                        renderFileTree();
+                        worker.terminate();
+                        resolve();
+                        break;
+                    case 'error':
+                        fileInfo.status = 'error';
+                        renderFileTree();
+                        showToast(`⚠️ ${msg.message}`, 'error');
+                        logger.error(msg.message);
+                        worker.terminate();
+                        reject(new Error(msg.message));
+                        break;
                 }
+            };
 
-                totalRows += rows.length;
-                renderFileTree();
-            },
-
-            onProgress(message, percent) {
-                setStatus(message, true, percent);
-            },
-
-            onComplete(total) {
-                fileInfo.status = 'ready';
-                fileInfo.totalRows = total;
-                renderFileTree();
-            },
-
-            onError(message) {
-                fileInfo.status = 'error';
-                renderFileTree();
-                showToast(`⚠️ ${message}`, 'error');
-                logger.error(message);
-            }
+            worker.onerror = (err) => {
+                // Module Worker 실패 시 폴백으로 전환
+                logger.warn('Worker 실패, 폴백 모드:', err.message);
+                worker.terminate();
+                indexFileFallback(file, fileInfo).then(resolve).catch(reject);
+            };
         });
 
         // BM25 인덱스 구축
         setStatus('BM25 인덱스 구축 중...', true, 95);
-        // 비동기로 BM25 구축 (UI 블로킹 방지)
         await new Promise(resolve => setTimeout(() => {
             state.index.buildBM25();
             resolve();
@@ -450,17 +492,82 @@ async function indexFile(file) {
         // 캐시에 저장
         if (cellsForCache.length > 0) {
             cache.saveFileData({
-                fileName: file.name,
-                lastModified: file.lastModified,
-                fileSize: file.size,
-                cells: cellsForCache,
-                headers: headersForCache
+                fileName: file.name, lastModified: file.lastModified,
+                fileSize: file.size, cells: cellsForCache, headers: headersForCache
             });
         }
 
-        // Fuse.js 인스턴스 갱신
         await updateFuseInstance();
+        updateStats();
+        setStatus(`✅ 인덱싱 완료: ${file.name} (${totalRows.toLocaleString()}행)`, false);
+        showToast(`✅ ${file.name} 인덱싱 완료 (${totalRows.toLocaleString()}행)`, 'success');
 
+    } catch (err) {
+        if (fileInfo.status !== 'error') {
+            fileInfo.status = 'error';
+            renderFileTree();
+            showToast(`⚠️ 인덱싱 실패: ${file.name}`, 'error');
+        }
+        logger.error('인덱싱 실패:', err);
+    }
+
+    state.isIndexing = false;
+    finishIndexing();
+}
+
+/**
+ * 폴백: Web Worker 미지원 시 기존 방식으로 메인 스레드에서 파싱
+ */
+async function indexFileFallback(file, fileInfo) {
+    const cellsForCache = [];
+    const headersForCache = {};
+    let totalRows = 0;
+
+    try {
+        // 기존 fileParser 사용 (동적 import)
+        const { parseFile: parseFileFn } = await import('./core/fileParser.js');
+
+        await parseFileFn(file, {
+            onChunk(chunkData) {
+                const { sheetName, headers, rows, offset } = chunkData;
+                state.index.addDataChunk(file.name, file.name, sheetName, headers, rows, offset);
+
+                if (!fileInfo.sheets.includes(sheetName)) {
+                    fileInfo.sheets.push(sheetName);
+                }
+                if (!headersForCache[sheetName]) {
+                    headersForCache[sheetName] = headers;
+                }
+                for (let ri = 0; ri < rows.length; ri++) {
+                    for (let ci = 0; ci < headers.length; ci++) {
+                        const val = rows[ri][ci];
+                        if (val && val !== '' && val !== 'nan' && val !== 'None' && val !== 'undefined') {
+                            cellsForCache.push({
+                                sheetName, rowIdx: offset + ri,
+                                colIdx: ci, colName: headers[ci], value: val
+                            });
+                        }
+                    }
+                }
+                totalRows += rows.length;
+                renderFileTree();
+            },
+            onProgress(message, percent) { setStatus(message, true, percent); },
+            onComplete(total) { fileInfo.status = 'ready'; fileInfo.totalRows = total; renderFileTree(); },
+            onError(message) { fileInfo.status = 'error'; renderFileTree(); showToast(`⚠️ ${message}`, 'error'); }
+        });
+
+        setStatus('BM25 인덱스 구축 중...', true, 95);
+        await new Promise(resolve => setTimeout(() => { state.index.buildBM25(); resolve(); }, 0));
+
+        if (cellsForCache.length > 0) {
+            cache.saveFileData({
+                fileName: file.name, lastModified: file.lastModified,
+                fileSize: file.size, cells: cellsForCache, headers: headersForCache
+            });
+        }
+
+        await updateFuseInstance();
         updateStats();
         setStatus(`✅ 인덱싱 완료: ${file.name} (${totalRows.toLocaleString()}행)`, false);
         showToast(`✅ ${file.name} 인덱싱 완료 (${totalRows.toLocaleString()}행)`, 'success');

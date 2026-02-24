@@ -231,28 +231,25 @@ function _fuzzySearch(index, keyword, rowScores, minSimilarity, fuseInstance) {
 }
 
 /**
- * 숫자 범위 검색
+ * [v1.1.2] 숫자 범위 검색 — 이진 탐색 O(log N + K)
+ * 기존: 전체 셀 풀스캔 O(N) + parseFloat 매번 호출
+ * 개선: 인덱싱 시 숫자 전처리 + 정렬 배열에서 이진 탐색
  */
 function _rangeSearch(index, minVal, maxVal, rowScores) {
-    for (let i = 0; i < index.cells.length; i++) {
-        const cell = index.cells[i];
+    const rangeResults = index.findCellsInRange(minVal, maxVal);
+
+    for (const { cellIdx } of rangeResults) {
+        const cell = index.cells[cellIdx];
         if (cell === null) continue;
 
-        // 쉼표 제거 후 숫자 변환 시도
-        const cleaned = cell.value.replace(/,/g, '').trim();
-        const numVal = parseFloat(cleaned);
-        if (isNaN(numVal)) continue;
-
-        if (numVal >= minVal && numVal <= maxVal) {
-            const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
-            const match = {
-                colName: cell.colName,
-                cellValue: cell.value,
-                matchType: 'range',
-                similarity: 0.9
-            };
-            updateRowScore(rowScores, rowKey, WEIGHT_RANGE, 'range', 0.9, match);
-        }
+        const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+        const match = {
+            colName: cell.colName,
+            cellValue: cell.value,
+            matchType: 'range',
+            similarity: 0.9
+        };
+        updateRowScore(rowScores, rowKey, WEIGHT_RANGE, 'range', 0.9, match);
     }
 }
 
