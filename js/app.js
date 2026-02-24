@@ -10,7 +10,7 @@
 
 import { SearchIndex } from './core/searchIndex.js';
 import { search } from './core/searchEngine.js';
-import { parseFile, isSupportedFile } from './core/fileParser.js';
+import { parseFile } from './core/fileParser.js';
 import * as cache from './core/cacheManager.js';
 import { getConfig, setConfig } from './utils/config.js';
 import { exportResults } from './utils/exporter.js';
@@ -109,7 +109,7 @@ function bindEvents() {
         }
     });
 
-    // 파일 드래그 앤 드롭
+    // [v1.1.0] 파일/폴더 드래그 앤 드롭 (폴더 재귀 탐색 지원)
     dom.dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dom.dropzone.classList.add('drag-over');
@@ -120,7 +120,7 @@ function bindEvents() {
     dom.dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dom.dropzone.classList.remove('drag-over');
-        handleFileDrop(e.dataTransfer.files);
+        handleDrop(e.dataTransfer);
     });
     dom.dropzone.addEventListener('click', () => dom.fileInput.click());
 
@@ -128,8 +128,8 @@ function bindEvents() {
     document.addEventListener('dragover', (e) => e.preventDefault());
     document.addEventListener('drop', (e) => {
         e.preventDefault();
-        if (e.dataTransfer.files.length > 0) {
-            handleFileDrop(e.dataTransfer.files);
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            handleDrop(e.dataTransfer);
         }
     });
 
@@ -190,12 +190,150 @@ function bindEvents() {
 }
 
 // ── 파일 처리 ──
-async function handleFileDrop(fileList) {
-    const files = [...fileList].filter(isSupportedFile);
-    if (files.length === 0) {
-        showToast('⚠️ 지원되지 않는 파일 형식입니다 (.xlsx, .xls, .csv만 가능)', 'warning');
+
+// 지원되는 확장자 (소문자)
+const SUPPORTED_EXT = new Set(['.xlsx', '.xls', '.csv']);
+
+/**
+ * 파일명이 지원되는 확장자인지 확인합니다.
+ * @param {string} name - 파일명
+ * @returns {boolean}
+ */
+function isSupportedExt(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot === -1) return false;
+    return SUPPORTED_EXT.has(name.slice(dot).toLowerCase());
+}
+
+/**
+ * [v1.1.0] 드롭된 DataTransfer에서 파일/폴더를 처리합니다.
+ * webkitGetAsEntry()로 폴더를 재귀 탐색하고,
+ * 지원되는 확장자(.xlsx, .xls, .csv)만 필터링합니다.
+ * @param {DataTransfer} dataTransfer
+ */
+async function handleDrop(dataTransfer) {
+    const items = dataTransfer.items;
+    const collectedFiles = [];
+    let skippedCount = 0;
+
+    if (items && items.length > 0) {
+        // webkitGetAsEntry() 지원 여부 확인 (폴더 탐색용)
+        const entries = [];
+        for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry?.();
+            if (entry) {
+                entries.push(entry);
+            } else {
+                // webkitGetAsEntry 미지원 시 일반 파일로 처리
+                const file = items[i].getAsFile();
+                if (file) {
+                    if (isSupportedExt(file.name)) {
+                        collectedFiles.push(file);
+                    } else {
+                        skippedCount++;
+                    }
+                }
+            }
+        }
+
+        // Entry가 있으면 폴더 재귀 탐색
+        if (entries.length > 0) {
+            setStatus('폴더 탐색 중...', true);
+            for (const entry of entries) {
+                const result = await collectFilesFromEntry(entry);
+                collectedFiles.push(...result.files);
+                skippedCount += result.skipped;
+            }
+        }
+    } else {
+        // dataTransfer.items 미지원 시 files 사용
+        for (const file of dataTransfer.files) {
+            if (isSupportedExt(file.name)) {
+                collectedFiles.push(file);
+            } else {
+                skippedCount++;
+            }
+        }
+    }
+
+    // 결과 보고 및 처리
+    if (collectedFiles.length === 0) {
+        const msg = skippedCount > 0
+            ? `⚠️ ${skippedCount}개 파일이 지원되지 않는 형식입니다 (.xlsx, .xls, .csv만 가능)`
+            : '⚠️ 지원되지 않는 파일 형식입니다 (.xlsx, .xls, .csv만 가능)';
+        showToast(msg, 'warning');
         return;
     }
+
+    if (skippedCount > 0) {
+        showToast(`ℹ️ ${skippedCount}개 비지원 파일 제외, ${collectedFiles.length}개 파일 로드`, 'info');
+    }
+
+    await handleFileDrop(collectedFiles);
+}
+
+/**
+ * [v1.1.0] FileSystemEntry를 재귀적으로 탐색하여 지원 파일을 수집합니다.
+ * @param {FileSystemEntry} entry
+ * @returns {Promise<{files: File[], skipped: number}>}
+ */
+async function collectFilesFromEntry(entry) {
+    const files = [];
+    let skipped = 0;
+
+    if (entry.isFile) {
+        // 파일 엔트리 → File 객체로 변환
+        const file = await new Promise((resolve, reject) => {
+            entry.file(resolve, reject);
+        });
+        if (isSupportedExt(file.name)) {
+            files.push(file);
+        } else {
+            skipped++;
+        }
+    } else if (entry.isDirectory) {
+        // 디렉토리 엔트리 → 하위 항목 재귀 탐색
+        const dirReader = entry.createReader();
+        const entries = await readAllDirectoryEntries(dirReader);
+        for (const childEntry of entries) {
+            const result = await collectFilesFromEntry(childEntry);
+            files.push(...result.files);
+            skipped += result.skipped;
+        }
+    }
+
+    return { files, skipped };
+}
+
+/**
+ * DirectoryReader에서 모든 엔트리를 읽습니다.
+ * readEntries()는 한번에 최대 100개만 반환하므로 빈 배열이 올 때까지 반복합니다.
+ * @param {FileSystemDirectoryReader} dirReader
+ * @returns {Promise<FileSystemEntry[]>}
+ */
+function readAllDirectoryEntries(dirReader) {
+    return new Promise((resolve, reject) => {
+        const allEntries = [];
+        function readBatch() {
+            dirReader.readEntries((entries) => {
+                if (entries.length === 0) {
+                    resolve(allEntries);
+                } else {
+                    allEntries.push(...entries);
+                    readBatch(); // 다음 배치 읽기
+                }
+            }, reject);
+        }
+        readBatch();
+    });
+}
+
+/**
+ * 파일 배열을 인덱싱합니다.
+ * @param {File[]} files
+ */
+async function handleFileDrop(files) {
+    if (files.length === 0) return;
 
     // UI 전환
     dom.dropzone.style.display = 'none';

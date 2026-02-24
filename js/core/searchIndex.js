@@ -1,7 +1,12 @@
 /**
- * [v1.0.0] 다중 계층 검색 인덱스
+ * [v1.1.0] 다중 계층 검색 인덱스
  * Inverted Index, 초성 Index, BM25 Index를 구축하여 고속 검색을 지원합니다.
  * 원본: indexer.py (SearchIndex 클래스) → 1:1 포팅
+ *
+ * [v1.1.0] CJK(중국어/일본어) 토큰화 추가
+ *   - Intl.Segmenter API 우선 사용 (브라우저 내장, 사전 불필요)
+ *   - 미지원 시 Bigram 폴백 (2글자 슬라이딩 윈도우)
+ *   - 한국어/영어 기존 로직에 영향 없음
  *
  * 파일 로드 시 1회 인덱싱하면 이후 검색은 O(1)~O(n) 수준으로 수행됩니다.
  */
@@ -12,8 +17,91 @@ import { BM25 } from './bm25.js';
 // 토큰 분리용 정규식 (구두점/공백 기준)
 const TOKEN_SPLIT_RE = /[\s,;|/\\()\[\]{}<>:"']+/;
 
+// CJK 유니코드 범위: 한글은 별도 처리하므로 여기는 중국어/일본어만
+// CJK Unified Ideographs: U+4E00~U+9FFF
+// CJK Extension A: U+3400~U+4DBF
+// 히라가나: U+3040~U+309F
+// 가타카나: U+30A0~U+30FF
+const CJK_RANGE_RE = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/;
+
+// Intl.Segmenter 지원 여부 (최초 1회 판별)
+const HAS_SEGMENTER = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function';
+
+// 언어별 Segmenter 캐시 (지연 생성)
+const _segmenters = {};
+
+/**
+ * 텍스트의 주요 언어를 간이 판별합니다.
+ * @param {string} text
+ * @returns {'ja'|'zh'|'ko'|'other'}
+ */
+function detectLang(text) {
+    let hasCJK = false;
+    let hasHiraganaKatakana = false;
+    for (const ch of text) {
+        const c = ch.charCodeAt(0);
+        if (c >= 0x3040 && c <= 0x30FF) hasHiraganaKatakana = true;
+        if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)) hasCJK = true;
+        if (isHangulSyllable(ch)) return 'ko'; // 한글이면 즉시 한국어 리턴
+    }
+    if (hasHiraganaKatakana) return 'ja';
+    if (hasCJK) return 'zh';
+    return 'other';
+}
+
+/**
+ * CJK 텍스트를 Intl.Segmenter로 단어 분할합니다.
+ * @param {string} text
+ * @param {string} lang - 'ja' 또는 'zh'
+ * @returns {string[]} 단어 배열
+ */
+function segmentCJK(text, lang) {
+    if (!HAS_SEGMENTER) return bigramTokenize(text);
+
+    try {
+        if (!_segmenters[lang]) {
+            _segmenters[lang] = new Intl.Segmenter(lang, { granularity: 'word' });
+        }
+        return [..._segmenters[lang].segment(text)]
+            .filter(s => s.isWordLike)
+            .map(s => s.segment);
+    } catch {
+        // Segmenter 실패 시 Bigram 폴백
+        return bigramTokenize(text);
+    }
+}
+
+/**
+ * Bigram 토큰화 (Intl.Segmenter 미지원 브라우저용 폴백)
+ * CJK 문자 연속 구간에 대해 2글자씩 슬라이딩 윈도우 적용
+ * 예: "東京都港区" → ["東京", "京都", "都港", "港区"]
+ * @param {string} text
+ * @returns {string[]}
+ */
+function bigramTokenize(text) {
+    const result = [];
+    // CJK 문자 연속 구간을 추출
+    const cjkRuns = text.match(/[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+/g);
+    if (!cjkRuns) return result;
+
+    for (const run of cjkRuns) {
+        // 유니그램 (1글자도 추가, 단일 문자 검색 보장)
+        for (const ch of run) {
+            result.push(ch);
+        }
+        // 바이그램 (2글자 슬라이딩)
+        const chars = [...run];
+        for (let i = 0; i < chars.length - 1; i++) {
+            result.push(chars[i] + chars[i + 1]);
+        }
+    }
+    return result;
+}
+
 /**
  * 텍스트를 검색용 토큰으로 분리합니다.
+ * [v1.1.0] CJK 토큰화 추가 — 중국어/일본어 텍스트에 대해
+ * Intl.Segmenter 또는 Bigram을 적용하여 의미 단위로 분할합니다.
  * @param {string} text - 정규화된 텍스트
  * @returns {Set<string>} 토큰 집합
  */
@@ -30,6 +118,17 @@ function tokenize(text) {
         const trimmed = w.trim();
         if (trimmed.length > 0) {
             tokens.add(trimmed);
+
+            // CJK 문자가 포함된 경우 추가 토큰화 수행
+            if (CJK_RANGE_RE.test(trimmed)) {
+                const lang = detectLang(trimmed);
+                if (lang === 'ja' || lang === 'zh') {
+                    const cjkTokens = segmentCJK(trimmed, lang);
+                    for (const ct of cjkTokens) {
+                        if (ct.length > 0) tokens.add(ct);
+                    }
+                }
+            }
         }
     }
     return tokens;
@@ -278,7 +377,13 @@ export class SearchIndex {
         for (const [rowKey, rowData] of this.rows) {
             // 행의 모든 셀 값을 결합하여 하나의 "문서"로 취급
             const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
-            const tokens = rowText.split(/\s+/).filter(t => t.length > 0);
+
+            // [v1.1.0] CJK 대응: tokenize() 함수 기반으로 BM25 코퍼스 생성
+            const tokenSet = tokenize(rowText);
+            // 전체 텍스트 제거 (BM25에서 무의미하게 큰 토큰)
+            tokenSet.delete(rowText);
+            const tokens = [...tokenSet].filter(t => t.length > 0);
+
             corpus.push(tokens);
             this._bm25RowKeys.push(rowKey);
         }
@@ -304,7 +409,10 @@ export class SearchIndex {
             return new Map();
         }
 
-        const tokens = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+        // [v1.1.0] CJK 대응: 쿼리도 tokenize()로 분할
+        const queryTokenSet = tokenize(query.toLowerCase());
+        queryTokenSet.delete(query.toLowerCase());
+        const tokens = [...queryTokenSet].filter(t => t.length > 0);
         const scores = this._bm25.getScores(tokens);
 
         const result = new Map();
