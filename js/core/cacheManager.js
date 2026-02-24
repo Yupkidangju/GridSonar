@@ -128,13 +128,16 @@ export async function saveFileData({ fileName, lastModified, fileSize, cells, he
 }
 
 /**
- * 캐시에서 파일 데이터를 로드합니다.
+ * [v1.1.8] 캐시에서 파일 데이터를 로드합니다.
+ * onChunk 콜백이 제공되면 스트리밍 모드: 청크를 즉시 콜백에 전달하고 메모리 해제.
+ * 콜백이 없으면 기존 방식: 전체 cells 배열을 반환 (하위 호환성).
  * @param {string} fileName
  * @param {number} lastModified
  * @param {number} fileSize
- * @returns {Promise<Object|null>} { fileName, headers, cells } 또는 null
+ * @param {Function} [onChunk] - 스트리밍 모드 콜백 (chunk 배열을 인자로 받음)
+ * @returns {Promise<Object|null>}
  */
-export async function loadFileData(fileName, lastModified, fileSize) {
+export async function loadFileData(fileName, lastModified, fileSize, onChunk) {
     try {
         await ensureStores();
         const key = makeCacheKey(fileName, lastModified, fileSize);
@@ -145,14 +148,26 @@ export async function loadFileData(fileName, lastModified, fileSize) {
         const headers = await sheetHeaderStore.getItem(key);
         if (!headers) return null;
 
-        // 셀 데이터 청크 로드
         const chunkMeta = await cellDataStore.getItem(`${key}__meta`);
         if (!chunkMeta) return null;
 
+        // [v1.1.8] 스트리밍 모드: 청크를 메모리에 모으지 않고 즉시 콜백
+        if (typeof onChunk === 'function') {
+            let totalCells = 0;
+            for (let i = 0; i < chunkMeta.totalChunks; i++) {
+                const chunk = await cellDataStore.getItem(`${key}__chunk_${i}`);
+                if (chunk && chunk.length > 0) {
+                    onChunk(chunk, headers);
+                    totalCells += chunk.length;
+                }
+            }
+            return { fileName, headers, totalCells };
+        }
+
+        // 기존 방식 (하위 호환성): 전체 배열 반환
         const cells = [];
         for (let i = 0; i < chunkMeta.totalChunks; i++) {
             const chunk = await cellDataStore.getItem(`${key}__chunk_${i}`);
-            // [v1.1.1 Fix] spread 대신 안전한 for-push (스택 오버플로우 방지)
             if (chunk) {
                 for (let j = 0; j < chunk.length; j++) {
                     cells.push(chunk[j]);

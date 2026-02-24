@@ -404,14 +404,22 @@ async function indexFile(file, fileKey, isBatch = false) {
 
     setStatus(`인덱싱 중: ${file.name}`, true);
 
-    // 캐시 확인
+    // [v1.1.8] 캐시 확인 — 스트리밍 복원 (OOM 방지)
     const cached = await cache.isFileCached(file.name, file.lastModified, file.size);
     if (cached) {
-        const restored = await cache.loadFileData(file.name, file.lastModified, file.size);
-        if (restored && restored.cells && restored.cells.length > 0) {
-            restoreFromCache(fileKey, file.name, restored);
+        let totalCells = 0;
+        let cachedHeaders = null;
+        const restored = await cache.loadFileData(file.name, file.lastModified, file.size, (chunk, headers) => {
+            cachedHeaders = headers;
+            restoreCacheChunk(fileKey, file.name, chunk, headers);
+            totalCells += chunk.length;
+        });
+        if (restored) {
+            // 헤더가 있으면 이미 콜백에서 처리 중이지만,
+            // loadFileData는 헤더를 콜백 전에 읽으므로 여기서 재검증
+            cachedHeaders = restored.headers;
             fileInfo.status = 'ready';
-            fileInfo.totalRows = restored.cells.length;
+            fileInfo.totalRows = totalCells || restored.totalCells || 0;
             renderFileTree();
             updateStats();
             setStatus(`✅ 캐시에서 복원: ${file.name}`, false);
@@ -466,6 +474,9 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
 
             worker.onmessage = (e) => {
                 messageQueue = messageQueue.then(async () => {
+                    // [v1.1.8 Fix] 파일이 삭제되었으면 즉시 중단 (좀비 캐시 방지)
+                    if (!state.files.has(fileKey)) return;
+
                     const msg = e.data;
                     if (msg.id !== id) return;
 
@@ -520,6 +531,8 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
                         case 'error':
                             fileInfo.status = 'error';
                             fileInfo.worker = null;
+                            // [v1.1.8 Fix] 논리적 에러 시에도 롤백 (반쪽짜리 데이터 제거)
+                            state.index.removeFile(fileKey);
                             renderFileTree();
                             showToast(`⚠️ ${msg.message}`, 'error');
                             logger.error(msg.message);
@@ -647,12 +660,16 @@ async function indexFileFallback(file, fileKey, fileInfo, isBatch) {
     }
 }
 
-function restoreFromCache(fileKey, displayName, data) {
-    const headers = data.headers || {};
+/**
+ * [v1.1.8] 캐시 청크 1개를 인덱스로 복원 (스트리밍 모드)
+ * 거대 배열을 메모리에 모으지 않고 청크 단위로 즉시 처리.
+ */
+function restoreCacheChunk(fileKey, displayName, cells, headers) {
+    if (!cells || cells.length === 0) return;
 
-    // 셀을 시트별/행별로 그룹핑
+    // 청크 내 셀을 시트별/행별로 그룹핑
     const sheetsData = {};
-    for (const cell of data.cells) {
+    for (const cell of cells) {
         const sheet = cell.sheetName;
         if (!sheetsData[sheet]) sheetsData[sheet] = {};
         if (!sheetsData[sheet][cell.rowIdx]) sheetsData[sheet][cell.rowIdx] = {};
@@ -660,7 +677,7 @@ function restoreFromCache(fileKey, displayName, data) {
     }
 
     for (const [sheetName, rowsMap] of Object.entries(sheetsData)) {
-        const hdrs = headers[sheetName] || [];
+        const hdrs = (headers && headers[sheetName]) || [];
         if (hdrs.length === 0) continue;
 
         const sortedRows = Object.keys(rowsMap).map(Number).sort((a, b) => a - b);
@@ -670,8 +687,7 @@ function restoreFromCache(fileKey, displayName, data) {
         });
 
         if (rows.length > 0) {
-            const minRow = sortedRows[0];
-            state.index.addDataChunk(fileKey, displayName, sheetName, hdrs, rows, minRow);
+            state.index.addDataChunk(fileKey, displayName, sheetName, hdrs, rows, sortedRows[0]);
         }
 
         const fileInfo = state.files.get(fileKey);
