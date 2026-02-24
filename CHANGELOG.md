@@ -5,6 +5,28 @@
 
 ---
 
+## [1.1.9] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **빈 행 인덱스 시프트 방지** — `addDataChunk`에 배열 다형성 추가, 캐시 복원 시 `sortedRows` 배열 직접 전달로 행 번호 밀림 차단
+- **캐시 초기화 UI** — `confirm()` 후 `window.location.reload()`로 DB/메모리/UI 일치 보장
+
+## [1.1.8] - 2026-02-25
+
+### 추가됨 (Added)
+- **캐시 스트리밍 복원** — `loadFileData(onChunk)` 콜백 모드, 거대 배열 누적 없이 청크 단위 즉시 처리
+
+### 수정됨 (Fixed)
+- **파일 삭제 vs 캐시 기록 충돌** — `messageQueue` 최상단에 `state.files.has(fileKey)` 검사, 삭제된 파일의 좀비 캐시 방지
+- **워커 논리적 에러 롤백** — `case 'error'`에도 `removeFile(fileKey)` 호출, 반쪽 데이터 잔류 방지
+
+## [1.1.7] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **isIndexing Boolean Trap** — `boolean` → `indexingJobs` 카운터 + `getter`로 연속 드롭 시 방어벽 붕괴 방지
+- **워커 크래시 데이터 롤백** — `worker.onerror`에서 `removeFile(fileKey)` 호출로 멱등성 보장
+- **음수 범위 검색** — `RANGE_PATTERN`에 `-` 캡처 추가, 구분자 `~` only로 음수 부호 충돌 방지
+
 ## [1.1.6] - 2026-02-25
 
 ### 수정됨 (Fixed)
