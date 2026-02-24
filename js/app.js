@@ -1039,10 +1039,45 @@ function matchLabel(type) {
 }
 
 // ── PWA 서비스 워커 ──
+/**
+ * [v1.1.2 Fix] Service Worker 업데이트 감지 추가
+ * 새 버전이 설치되면 토스트로 사용자에게 안내합니다.
+ * 자동 새로고침은 사용자 데이터 손실 위험이 있으므로 하지 않습니다.
+ * controllerchange 이벤트(skipWaiting 호출 시)에서만 자동 새로고침합니다.
+ */
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').catch(err => {
+        navigator.serviceWorker.register('sw.js').then(registration => {
+            logger.info('Service Worker 등록 성공');
+
+            // 업데이트 감지: 새 워커가 설치될 때
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                if (!newWorker) return;
+
+                newWorker.addEventListener('statechange', () => {
+                    // 새 워커가 설치 완료 + 기존 통제 워커가 존재 = 업데이트 상황
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        showToast(
+                            '🔄 새로운 버전이 있습니다. 페이지를 새로고침하면 적용됩니다.',
+                            'info',
+                            15000  // 15초 동안 표시 — 사용자가 인지할 시간 충분히 확보
+                        );
+                    }
+                });
+            });
+        }).catch(err => {
             logger.warn('Service Worker 등록 실패:', err);
+        });
+
+        // 통제 워커 변경 감지 (skipWaiting 호출 시)
+        // 이 시점에서는 새 워커가 이미 활성화되었으므로 즉시 새로고침
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+                refreshing = true;
+                window.location.reload();
+            }
         });
     }
 }
