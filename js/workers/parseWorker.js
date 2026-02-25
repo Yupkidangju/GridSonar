@@ -206,7 +206,14 @@ async function parsePDFInWorker(id, fileName, arrayBuffer) {
         useSystemFonts: true,
         // [v2.0.2] 표준 폰트(Helvetica, Times-Roman 등) CDN 경로 지정
         // PDF에 내장되지 않은 기본 폰트를 만날 때 텍스트 추출 실패를 방지
-        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
+        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/',
+        // [v2.1.1] CMap(Character Map) CDN 경로 지정 — CJK 폰트 디코딩 필수
+        // 한글/중국어/일본어 등 폰트가 PDF에 내장되지 않고
+        // OS 폰트나 Adobe 기본 아시아 폰트를 참조하는 경우,
+        // 글리프 코드 → 유니코드 텍스트 변환을 위한 CMap 사전이 필요.
+        // 없으면 "Unable to load CMap" 에러 → 워커 크래시 → 파싱 실패.
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+        cMapPacked: true
     });
     const pdf = await loadingTask.promise;
     const numPages = pdf.numPages;

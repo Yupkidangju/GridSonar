@@ -15,6 +15,11 @@
 - **세션 히스토리 i18n** — 5개 국어 번역 키 추가
 - **file-input accept 범위 확장** — `.pdf`, `.docx` 추가
 
+## [2.1.1] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **CJK 폰트 PDF 파싱 실패 해결** — `cMapUrl` + `cMapPacked` 옵션 추가. 한글/중국어/일본어 폰트가 PDF에 내장되지 않고 OS/Adobe 기본 폰트를 참조하는 경우, CMap(Character Map) 사전을 CDN에서 로드하여 글리프 코드→유니코드 변환 수행. 이전에는 CMap 미설정으로 "Unable to load CMap" 에러 → 워커 크래시 → 파싱 실패.
+
 ## [2.0.2] - 2026-02-25
 
 ### 수정됨 (Fixed)
