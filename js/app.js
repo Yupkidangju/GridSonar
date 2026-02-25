@@ -10,6 +10,7 @@
 
 import { SearchIndex } from './core/searchIndex.js';
 import { search } from './core/searchEngine.js';
+import { parseQuery } from './core/queryParser.js';
 // [v1.1.2] fileParser는 폴백에서 동적 import — Worker 우선 사용
 import * as cache from './core/cacheManager.js';
 import { getConfig, setConfig } from './utils/config.js';
@@ -950,7 +951,9 @@ function renderResults(results, query) {
     // 가상 스크롤 상태 초기화
     virtualScroll.allResults = results;
     virtualScroll.visibleResults = results;
-    virtualScroll.keywords = query.toLowerCase().split(/\s+/).filter(k => !k.startsWith('-'));
+    // [v2.5.2 Fix] 하이라이트에 순수 키워드만 전달 (col:/regex 구문 제외)
+    const parsed = parseQuery(query);
+    virtualScroll.keywords = parsed.keywords.map(k => k.toLowerCase());
     virtualScroll.lastStart = -1;
     virtualScroll.lastEnd = -1;
 
@@ -1434,6 +1437,11 @@ function renderSessionHistory() {
     dom.sessionList.querySelectorAll('[data-action="restore"]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            // [v2.5.2 Fix] Race Condition 방지: 인덱싱/복원 중 중복 클릭 차단
+            if (state.isIndexing) {
+                showToast(t('loadingIndexing'), 'warning');
+                return;
+            }
             const id = btn.dataset.sessionId;
             // 현재 파일이 있으면 확인 대화
             if (state.files.size > 0) {
@@ -1457,6 +1465,11 @@ function renderSessionHistory() {
     // 세션 아이템 전체 클릭 = 복원
     dom.sessionList.querySelectorAll('.session-item').forEach(item => {
         item.addEventListener('click', () => {
+            // [v2.5.2 Fix] Race Condition 방지: 인덱싱/복원 중 중복 클릭 차단
+            if (state.isIndexing) {
+                showToast(t('loadingIndexing'), 'warning');
+                return;
+            }
             const id = item.dataset.sessionId;
             if (state.files.size > 0) {
                 if (!confirm(t('sessionConfirmRestore'))) return;

@@ -5,6 +5,13 @@
 
 ---
 
+## [2.5.2] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **🚨 혼합 쿼리 AND 조건 붕괴** — `홍길동 100~500` 또는 `서울 /010-\d{4}/` 등 다양한 검색 유형을 혼합할 때 OR처럼 동작하던 버그 수정. `_applyAndCondition`을 query 객체 전체를 받는 통합 함수로 업그레이드하여 keywords + regexFilters + ranges + columnFilters를 모두 AND 교집합으로 검증.
+- **⚠️ 세션 복원 Race Condition** — 복원/인덱싱 진행 중 중복 클릭 차단. `state.isIndexing` 가드를 3곳의 세션 복원 핸들러에 추가.
+- **🔍 하이라이트 오탐** — `col:이름`, `/regex/` 등 구문이 검색어 하이라이트 대상에 포함되던 UX 결함 수정. `parseQuery`로 순수 keywords만 추출하여 전달.
+
 ## [2.5.1] - 2026-02-25
 
 ### 수정됨 (Fixed)

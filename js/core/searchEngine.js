@@ -118,16 +118,15 @@ export function search(index, rawQuery, options = {}) {
         _applyExcludes(index, query.excludes, rowScores);
     }
 
-    // AND 조건 적용: 모든 키워드가 행에 포함되어야 함 (2개 이상일 때)
-    if (query.keywords.length > 1) {
-        _applyAndCondition(index, query.keywords, rowScores);
-    }
-
-    // [v2.5.1 Fix] 열 필터 AND 강제 적용:
-    // columnFilter로 검색된 결과가 다른 일반 키워드와 OR로 합쳐지는 버그 수정.
-    // 모든 columnFilter 조건을 충족하지 않는 행을 결과에서 제거.
-    if (query.columnFilters.length > 0) {
-        _applyColumnCondition(index, query.columnFilters, rowScores);
+    // [v2.5.2] 통합 AND 조건 적용:
+    // 일반 키워드, 정규식, 범위, 열 필터를 모두 AND(교집합)으로 강제.
+    // 쿼리 유형이 2가지 이상이거나, 키워드가 2개 이상일 때 발동.
+    const queryTypeCount = (query.keywords.length > 0 ? 1 : 0)
+        + (query.ranges.length > 0 ? 1 : 0)
+        + (query.regexFilters.length > 0 ? 1 : 0)
+        + (query.columnFilters.length > 0 ? 1 : 0);
+    if (queryTypeCount > 1 || query.keywords.length > 1) {
+        _applyAndCondition(index, query, rowScores);
     }
 
     // 결과 생성 및 정렬
@@ -317,53 +316,66 @@ function _applyExcludes(index, excludes, rowScores) {
 }
 
 /**
- * AND 조건: 모든 키워드가 행에 포함되어야 결과에 유지
- */
-function _applyAndCondition(index, keywords, rowScores) {
-    const keysToRemove = [];
-    for (const [rowKey] of rowScores) {
-        const rowData = index.rows.get(rowKey);
-        if (!rowData) continue;
-        const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
-        const allFound = keywords.every(kw => rowText.includes(kw.toLowerCase()));
-        if (!allFound) {
-            keysToRemove.push(rowKey);
-        }
-    }
-    for (const key of keysToRemove) {
-        rowScores.delete(key);
-    }
-}
-
-/**
- * [v2.5.1 Fix] 열 필터 AND 강제 적용:
- * 모든 columnFilter 조건을 충족하지 않는 행을 결과에서 제거합니다.
- * 행의 headers에서 column 이름(부분 일치)과 매칭되는 열을 찾고,
- * 해당 셀 값에 keyword가 포함되는지 검증합니다.
+ * [v2.5.2] 통합 AND 조건: 모든 쿼리 유형(키워드, 정규식, 범위, 열 필터)을
+ * 교집합(AND)으로 검증합니다. 하나라도 충족하지 않는 행은 제거.
  * @param {Object} index - 검색 인덱스
- * @param {Array<{column: string, keyword: string}>} columnFilters - 열 필터 배열
+ * @param {Object} query - parseQuery() 결과 (keywords, regexFilters, ranges, columnFilters)
  * @param {Map} rowScores - 행별 점수 맵
  */
-function _applyColumnCondition(index, columnFilters, rowScores) {
+function _applyAndCondition(index, query, rowScores) {
     const keysToRemove = [];
     for (const [rowKey] of rowScores) {
         const rowData = index.rows.get(rowKey);
         if (!rowData) continue;
 
-        for (const { column, keyword } of columnFilters) {
-            const colLower = column.toLowerCase();
-            const kwLower = keyword.toLowerCase();
+        const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
+        let allPassed = true;
 
-            // 행의 헤더 중 column 이름과 부분 일치하는 열 찾기
-            const targetCol = rowData.headers.find(
-                h => h.toLowerCase().includes(colLower)
+        // 1. 일반 키워드 AND 검사: 모든 키워드가 행 텍스트에 포함되어야 함
+        if (query.keywords.length > 0) {
+            const keywordsPassed = query.keywords.every(
+                kw => rowText.includes(kw.toLowerCase())
             );
+            if (!keywordsPassed) allPassed = false;
+        }
 
-            // 열을 찾지 못하거나, 해당 셀이 keyword를 포함하지 않으면 제거
-            if (!targetCol || !(rowData.cells[targetCol] || '').toLowerCase().includes(kwLower)) {
-                keysToRemove.push(rowKey);
-                break;
+        // 2. 정규식 AND 검사: 모든 정규식 패턴이 행 텍스트와 매칭되어야 함
+        if (allPassed && query.regexFilters.length > 0) {
+            const regexPassed = query.regexFilters.every(regex => {
+                regex.lastIndex = 0;
+                return regex.test(rowText);
+            });
+            if (!regexPassed) allPassed = false;
+        }
+
+        // 3. 범위 AND 검사: 행의 어느 셀이든 해당 범위에 속하는 숫자가 있어야 함
+        if (allPassed && query.ranges.length > 0) {
+            const rangePassed = query.ranges.every(([minVal, maxVal]) => {
+                return Object.values(rowData.cells).some(cellVal => {
+                    const num = parseFloat(cellVal);
+                    return !isNaN(num) && num >= minVal && num <= maxVal;
+                });
+            });
+            if (!rangePassed) allPassed = false;
+        }
+
+        // 4. 열 필터 AND 검사: 각 columnFilter의 열에 keyword가 포함되어야 함
+        if (allPassed && query.columnFilters.length > 0) {
+            for (const { column, keyword } of query.columnFilters) {
+                const colLower = column.toLowerCase();
+                const kwLower = keyword.toLowerCase();
+                const targetCol = rowData.headers.find(
+                    h => h.toLowerCase().includes(colLower)
+                );
+                if (!targetCol || !(rowData.cells[targetCol] || '').toLowerCase().includes(kwLower)) {
+                    allPassed = false;
+                    break;
+                }
             }
+        }
+
+        if (!allPassed) {
+            keysToRemove.push(rowKey);
         }
     }
     for (const key of keysToRemove) {
