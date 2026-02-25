@@ -123,6 +123,13 @@ export function search(index, rawQuery, options = {}) {
         _applyAndCondition(index, query.keywords, rowScores);
     }
 
+    // [v2.5.1 Fix] 열 필터 AND 강제 적용:
+    // columnFilter로 검색된 결과가 다른 일반 키워드와 OR로 합쳐지는 버그 수정.
+    // 모든 columnFilter 조건을 충족하지 않는 행을 결과에서 제거.
+    if (query.columnFilters.length > 0) {
+        _applyColumnCondition(index, query.columnFilters, rowScores);
+    }
+
     // 결과 생성 및 정렬
     const results = [];
     for (const [rowKey, info] of rowScores) {
@@ -328,7 +335,41 @@ function _applyAndCondition(index, keywords, rowScores) {
     }
 }
 
-// 가중치 상수 내보내기 (테스트/디버깅용)
+/**
+ * [v2.5.1 Fix] 열 필터 AND 강제 적용:
+ * 모든 columnFilter 조건을 충족하지 않는 행을 결과에서 제거합니다.
+ * 행의 headers에서 column 이름(부분 일치)과 매칭되는 열을 찾고,
+ * 해당 셀 값에 keyword가 포함되는지 검증합니다.
+ * @param {Object} index - 검색 인덱스
+ * @param {Array<{column: string, keyword: string}>} columnFilters - 열 필터 배열
+ * @param {Map} rowScores - 행별 점수 맵
+ */
+function _applyColumnCondition(index, columnFilters, rowScores) {
+    const keysToRemove = [];
+    for (const [rowKey] of rowScores) {
+        const rowData = index.rows.get(rowKey);
+        if (!rowData) continue;
+
+        for (const { column, keyword } of columnFilters) {
+            const colLower = column.toLowerCase();
+            const kwLower = keyword.toLowerCase();
+
+            // 행의 헤더 중 column 이름과 부분 일치하는 열 찾기
+            const targetCol = rowData.headers.find(
+                h => h.toLowerCase().includes(colLower)
+            );
+
+            // 열을 찾지 못하거나, 해당 셀이 keyword를 포함하지 않으면 제거
+            if (!targetCol || !(rowData.cells[targetCol] || '').toLowerCase().includes(kwLower)) {
+                keysToRemove.push(rowKey);
+                break;
+            }
+        }
+    }
+    for (const key of keysToRemove) {
+        rowScores.delete(key);
+    }
+}
 export { WEIGHT_EXACT, WEIGHT_CHOSUNG, WEIGHT_FUZZY, WEIGHT_BM25, WEIGHT_RANGE, WEIGHT_REGEX };
 
 /**
@@ -378,22 +419,34 @@ function _columnSearch(index, column, keyword, rowScores) {
 }
 
 /**
- * [v2.5.0] 정규식 검색: 전체 셀을 순회하며 정규식 테스트
- * 성능 고려: 셀 수가 많으면 느려질 수 있으므로 최대 50,000개로 제한
+ * [v2.5.1] 정규식 검색: vocabulary(인버티드 인덱스 키) 기반 최적화
+ * 
+ * 기존 방식: 전체 셀 O(N) 풀스캔 + 50K 상한 → 대량 데이터에서 결과 누락
+ * 새 방식: vocabulary(고유 토큰)만 정규식 테스트 → 매칭 토큰의 셀을
+ *          인버티드 인덱스에서 O(1)로 조회. 상한 없이 전수 검색 가능.
+ * 
  * @param {Object} index - 검색 인덱스
  * @param {RegExp} regex - 적용할 정규식
  * @param {Map} rowScores - 행별 점수 맵
  */
 function _regexSearch(index, regex, rowScores) {
-    const maxCells = Math.min(index.cells.length, 50000);
+    // 인버티드 인덱스의 키(고유 토큰)를 대상으로 정규식 테스트
+    // 데이터가 100만 행이어도 고유 단어는 수만 개 수준
+    const matchedCellIndices = new Set();
 
-    for (let i = 0; i < maxCells; i++) {
-        const cell = index.cells[i];
-        if (cell === null) continue;
-
-        // 정규식 lastIndex 초기화 (g 플래그 사용 시 필수)
+    for (const [token, cellIndices] of index.invertedIndex) {
         regex.lastIndex = 0;
-        if (!regex.test(cell.value)) continue;
+        if (regex.test(token)) {
+            for (const idx of cellIndices) {
+                matchedCellIndices.add(idx);
+            }
+        }
+    }
+
+    // 매칭된 셀 인덱스에서 행 점수 누적
+    for (const cellIdx of matchedCellIndices) {
+        const cell = index.cells[cellIdx];
+        if (cell === null) continue;
 
         const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
         const sim = 0.95;

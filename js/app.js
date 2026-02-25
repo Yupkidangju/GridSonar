@@ -931,9 +931,18 @@ function renderResults(results, query) {
     }
     virtualScroll.headerList = [...allHeaders];
 
-    let thead = '<tr>';
+    // [v2.5.1 Fix] 헤더는 tbody 행의 flex 스타일과 동일하게 적용
+    let thead = '<tr style="display:flex;width:100%;">';
     for (const h of virtualScroll.headerList) {
-        thead += `<th>${escapeHtml(h)}</th>`;
+        if (h === t('metaMatch')) {
+            thead += `<th style="flex:0 0 120px;text-align:left;">${escapeHtml(h)}</th>`;
+        } else if (h === t('metaFile')) {
+            thead += `<th style="flex:0 0 180px;text-align:left;">${escapeHtml(h)}</th>`;
+        } else if (h === t('metaSheet')) {
+            thead += `<th style="flex:0 0 120px;text-align:left;">${escapeHtml(h)}</th>`;
+        } else {
+            thead += `<th style="flex:1;min-width:0;text-align:left;">${escapeHtml(h)}</th>`;
+        }
     }
     thead += '</tr>';
     dom.resultsThead.innerHTML = thead;
