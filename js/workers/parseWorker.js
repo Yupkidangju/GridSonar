@@ -9,52 +9,37 @@
  *                   { type:'complete', id, totalRows }
  *                   { type:'error',    id, message }
  *
- * [v2.0.0] PDF/DOCX 지원 추가 — "1열짜리 엑셀" 가상화 패턴
- *   PDF: pdf.js (Mozilla) — 페이지별 텍스트 추출
- *   DOCX: mammoth.js — 문단별 텍스트 추출
+ * [v2.0.1] module worker에서 classic worker로 전환 (importScripts 호환성 확보)
+ *   - pdf.js 등 일부 라이브러리가 내부적으로 importScripts를 호출할 때
+ *     모듈 워커 환경에서 발생하는 DOMException 원천 차단.
+ *   - 지연 로딩(Lazy Load): 파일 타입에 따라 필요한 CDN만 동기 로드
  */
 
-// CDN 라이브러리 (워커 내부에서 동적 로드)
-let XLSX = null;
-let Papa = null;
-let pdfjsLib = null;
-let mammoth = null;
-
-// SheetJS 로드
-async function loadSheetJS() {
-    if (XLSX) return XLSX;
-    try {
-        XLSX = await import('https://esm.sh/xlsx@0.18.5');
-    } catch {
-        XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
-    }
+// 라이브러리 로드 함수 (Classic Worker 전용: importScripts 사용)
+function loadSheetJS() {
+    if (typeof XLSX !== 'undefined') return XLSX;
+    importScripts('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
     return XLSX;
 }
 
-// PapaParse 로드
-async function loadPapaParse() {
-    if (Papa) return Papa;
-    const module = await import('https://esm.sh/papaparse@5.4.1');
-    Papa = module.default || module;
+function loadPapaParse() {
+    if (typeof Papa !== 'undefined') return Papa;
+    importScripts('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
     return Papa;
 }
 
-// [v2.0.0] pdf.js 로드 (v3.11.174 — Web Worker 내 안정 동작 확인된 버전)
-async function loadPdfJS() {
-    if (pdfjsLib) return pdfjsLib;
-    const module = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.mjs');
-    pdfjsLib = module;
-    // sub-worker 완전 비활성화: data: URL로 빈 워커를 주입하여
-    // Web Worker 내부에서 중첩 워커 생성 시도 자체를 차단
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'data:text/javascript,';
+function loadPdfJS() {
+    if (typeof pdfjsLib !== 'undefined') return pdfjsLib;
+    // v3.11.174 안정 버전 사용
+    importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
+    // pdf.js 내부 워커 통신 활성화
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
     return pdfjsLib;
 }
 
-// [v2.0.0] mammoth.js 로드
-async function loadMammoth() {
-    if (mammoth) return mammoth;
-    const module = await import('https://esm.sh/mammoth@1.8.0');
-    mammoth = module.default || module;
+function loadMammoth() {
+    if (typeof mammoth !== 'undefined') return mammoth;
+    importScripts('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js');
     return mammoth;
 }
 
@@ -83,10 +68,9 @@ self.onmessage = async (e) => {
 
 /**
  * CSV 파싱 (PapaParse chunk 모드)
- * [v1.1.3 Fix] File(Blob) 객체를 직접 받아 PapaParse 스트리밍 처리.
  */
 async function parseCSVInWorker(id, fileName, fileOrBlob) {
-    const PapaModule = await loadPapaParse();
+    const PapaModule = loadPapaParse();
     const sheetName = fileName;
     let totalRows = 0;
     let headers = null;
@@ -142,10 +126,10 @@ async function parseCSVInWorker(id, fileName, fileOrBlob) {
 }
 
 /**
- * Excel 파싱 (SheetJS — 동기 연산이지만 워커이므로 UI 블로킹 없음)
+ * Excel 파싱 (SheetJS)
  */
 async function parseExcelInWorker(id, fileName, arrayBuffer) {
-    const xlsx = await loadSheetJS();
+    const xlsx = loadSheetJS();
     const CHUNK_SIZE = 10000;
 
     self.postMessage({ type: 'progress', id, message: `Excel 파싱 중: ${fileName}`, percent: 10 });
@@ -202,15 +186,13 @@ async function parseExcelInWorker(id, fileName, arrayBuffer) {
 }
 
 /**
- * [v2.0.0] PDF 파싱 — pdf.js로 페이지별 텍스트 추출
- * "1열짜리 엑셀" 가상화: 각 페이지를 시트로, 전체 텍스트를 단일 셀로 취급
+ * [v2.0.0] PDF 파싱
  */
 async function parsePDFInWorker(id, fileName, arrayBuffer) {
-    const pdfjs = await loadPdfJS();
+    const pdfjs = loadPdfJS();
 
     self.postMessage({ type: 'progress', id, message: `PDF 로딩 중: ${fileName}`, percent: 5 });
 
-    // PDF 문서 로드 (sub-worker 비활성화 상태에서 동작)
     const loadingTask = pdfjs.getDocument({
         data: new Uint8Array(arrayBuffer),
         isEvalSupported: false,
@@ -227,20 +209,15 @@ async function parsePDFInWorker(id, fileName, arrayBuffer) {
         percent: 10
     });
 
-    // 페이지별로 텍스트 추출하여 청크 전송
     for (let p = 1; p <= numPages; p++) {
         const page = await pdf.getPage(p);
         const textContent = await page.getTextContent();
 
-        // 텍스트 아이템을 공백으로 합치기
         const text = textContent.items.map(item => item.str).join(' ').trim();
+        if (text.length === 0) continue;
 
-        if (text.length === 0) continue; // 빈 페이지 스킵
-
-        // 시트명: "N페이지" 형태 (예: "3p")
         const sheetName = `${p}p`;
 
-        // 1열짜리 엑셀로 가상화: 본문 전체를 하나의 행/셀로
         self.postMessage({
             type: 'chunk', id,
             sheetName,
@@ -263,15 +240,13 @@ async function parsePDFInWorker(id, fileName, arrayBuffer) {
 }
 
 /**
- * [v2.0.0] DOCX 파싱 — mammoth.js로 텍스트 추출
- * "1열짜리 엑셀" 가상화: 문단 단위로 행 분할, 단일 시트/단일 컬럼
+ * [v2.0.0] DOCX 파싱
  */
 async function parseDOCXInWorker(id, fileName, arrayBuffer) {
-    const mam = await loadMammoth();
+    const mam = loadMammoth();
 
     self.postMessage({ type: 'progress', id, message: `DOCX 로딩 중: ${fileName}`, percent: 10 });
 
-    // mammoth로 텍스트 추출
     const result = await mam.extractRawText({ arrayBuffer });
     const fullText = result.value || '';
 
@@ -280,7 +255,6 @@ async function parseDOCXInWorker(id, fileName, arrayBuffer) {
         return;
     }
 
-    // 문단(빈 줄 기준) 단위로 분할하여 행 생성
     const paragraphs = fullText.split(/\n+/).filter(p => p.trim().length > 0);
     const HEADER = ['본문'];
     const CHUNK_SIZE = 500;
@@ -293,7 +267,6 @@ async function parseDOCXInWorker(id, fileName, arrayBuffer) {
         percent: 30
     });
 
-    // 청크 분할 전송
     for (let i = 0; i < paragraphs.length; i += CHUNK_SIZE) {
         const chunk = paragraphs.slice(i, i + CHUNK_SIZE);
         const rows = chunk.map(p => [p.trim()]);

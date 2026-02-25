@@ -494,7 +494,7 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
     const CACHE_FLUSH_SIZE = 5000; // IndexedDB 청크 단위
 
     try {
-        const worker = new Worker('./js/workers/parseWorker.js', { type: 'module' });
+        const worker = new Worker('./js/workers/parseWorker.js');
         fileInfo.worker = worker;
         const id = `${fileKey}_${Date.now()}`;
 
