@@ -204,7 +204,9 @@ function _fuzzySearch(index, keyword, rowScores, minSimilarity, fuseInstance) {
     for (const result of fuseResults) {
         // Fuse.js score: 0 = 완벽 매치, 1 = 불일치 → 반전하여 0~1 유사도로 변환
         const sim = 1 - (result.score || 0);
-        if (sim < minSimilarity) continue;
+        // [v1.2.0 Fix] 유사도 필터: "이상" 기준 (100% 설정 시 100% 결과 포함)
+        // 부동소수점 비교 안전을 위해 미세 허용치(epsilon) 적용
+        if (sim < minSimilarity - 1e-9) continue;
 
         const matchedToken = result.item;
         // 정확 매칭과 중복되는 결과는 건너뛰기
