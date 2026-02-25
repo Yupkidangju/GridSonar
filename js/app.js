@@ -44,7 +44,15 @@ document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
     initResizeHandle();
     registerServiceWorker();
-    logger.info('GridSonar 초기화 완료 (v1.0.0)');
+    // [v2.1.0] 영구 저장소 요청 — 브라우저가 IndexedDB를 임의 삭제하지 않도록 요청
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().then(granted => {
+            if (granted) logger.info('영구 저장소 권한 확보');
+        });
+    }
+    // [v2.1.0] 세션 히스토리 초기 렌더링
+    renderSessionHistory();
+    logger.info('GridSonar 초기화 완료 (v2.1.0)');
 });
 
 function cacheDomRefs() {
@@ -83,6 +91,9 @@ function cacheDomRefs() {
     dom.langSelect = $('lang-select');
     dom.btnExportErrors = $('btn-export-errors');
     dom.btnExportErrorsSidebar = $('btn-export-errors-sidebar');
+    // [v2.1.0] 세션 히스토리 DOM 참조
+    dom.sessionHistory = $('session-history');
+    dom.sessionList = $('session-list');
 }
 
 function loadSettings() {
@@ -434,6 +445,10 @@ async function handleFileDrop(files) {
         setStatus(`${t('indexingComplete')} (${state.index.totalFiles}${t('files')}, ${state.index.totalRows.toLocaleString()}${t('rows')})`, false);
     }
     state.indexingJobs--;
+    // [v2.1.0] 인덱싱 완료 시 세션 자동 저장
+    if (!state.isIndexing && state.files.size > 0) {
+        saveCurrentSession();
+    }
 }
 
 /**
@@ -1031,6 +1046,304 @@ function removeFile(fileKey) {
     // [v1.1.5 Fix] Fuse.js 사전 갱신 — 삭제된 파일의 어휘가 퍼지 검색에 좀비로 남지 않도록
     updateFuseInstance();
     showToast(`🗑️ ${fileInfo.displayName} ${t('removeFile')}`, 'info');
+    // [v2.1.0] 파일 제거 시 현재 세션 갱신
+    if (state.files.size > 0) {
+        saveCurrentSession();
+    }
+    renderSessionHistory();
+}
+
+// ── [v2.1.0] 세션 히스토리 ── //
+
+/**
+ * 세션 히스토리 최대 보관 수 (localStorage 용량 제한 방지)
+ */
+const MAX_SESSIONS = 20;
+const SESSION_STORAGE_KEY = 'gridsonar_sessions';
+
+/**
+ * localStorage에서 저장된 세션 목록을 읽어옵니다.
+ * @returns {Array} 세션 배열
+ */
+function getSessions() {
+    try {
+        const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * 세션 목록을 localStorage에 저장합니다.
+ * @param {Array} sessions - 세션 배열
+ */
+function saveSessions(sessions) {
+    // 최대 수 제한: 오래된 순으로 초과분 제거
+    while (sessions.length > MAX_SESSIONS) {
+        sessions.pop();
+    }
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
+}
+
+/**
+ * 현재 로드된 파일들을 하나의 세션으로 저장합니다.
+ * 동일 파일 구성이면 기존 세션을 갱신, 아니면 신규 생성.
+ */
+function saveCurrentSession() {
+    if (state.files.size === 0) return;
+
+    // 파일 메타 정보 수집 (File 객체는 저장 불가 → 메타만 추출)
+    const files = [];
+    for (const [fileKey, info] of state.files) {
+        // 에러 상태 파일은 세션에 포함하지 않음
+        if (info.status === 'error') continue;
+        const parts = fileKey.split('__');
+        files.push({
+            fileKey,
+            fileName: info.displayName,
+            lastModified: parseInt(parts[1]) || 0,
+            fileSize: parseInt(parts[2]) || 0
+        });
+    }
+
+    if (files.length === 0) return;
+
+    const sessions = getSessions();
+    const now = new Date();
+    const title = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    // 동일한 파일 구성의 세션이 있는지 확인 (fileKey 집합 비교)
+    const currentKeySet = new Set(files.map(f => f.fileKey));
+    const existingIdx = sessions.findIndex(s => {
+        if (s.files.length !== currentKeySet.size) return false;
+        return s.files.every(f => currentKeySet.has(f.fileKey));
+    });
+
+    if (existingIdx >= 0) {
+        // 기존 세션 갱신 (제목, 시각, 파일 목록)
+        sessions[existingIdx].title = `${title} (${files.length}${t('sessionFiles')})`;
+        sessions[existingIdx].updatedAt = now.toISOString();
+        sessions[existingIdx].files = files;
+        // 최신으로 끌어올리기
+        const [updated] = sessions.splice(existingIdx, 1);
+        sessions.unshift(updated);
+    } else {
+        // 신규 세션 생성
+        sessions.unshift({
+            id: String(Date.now()),
+            title: `${title} (${files.length}${t('sessionFiles')})`,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+            files
+        });
+    }
+
+    saveSessions(sessions);
+    renderSessionHistory();
+    logger.info(`세션 저장: ${files.length}개 파일`);
+}
+
+/**
+ * 세션을 삭제합니다.
+ * @param {string} sessionId - 세션 ID
+ */
+function deleteSession(sessionId) {
+    const sessions = getSessions().filter(s => s.id !== sessionId);
+    saveSessions(sessions);
+    renderSessionHistory();
+    showToast(t('sessionDeleted'), 'info');
+}
+
+/**
+ * 세션을 복원합니다.
+ * 현재 작업을 초기화한 뒤 IndexedDB 캐시에서 데이터를 직접 복원합니다.
+ * 원본 파일 없이 1~2초 내에 검색 가능 상태로 전환됩니다.
+ * @param {string} sessionId - 세션 ID
+ */
+async function restoreSession(sessionId) {
+    const sessions = getSessions();
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    setStatus(t('sessionRestoring'), true, 10);
+
+    // 1단계: 현재 상태 초기화 (인덱스/파일트리만 — IndexedDB 캐시는 유지)
+    state.index = new SearchIndex();
+    state.fuseInstance = null;
+    state.results = [];
+    state.filteredResults = [];
+    state.currentQuery = '';
+    // 기존 워커 종료
+    for (const [, info] of state.files) {
+        if (info.worker) {
+            info.worker.terminate();
+            info.worker = null;
+        }
+    }
+    state.files.clear();
+
+    // UI 전환
+    dom.dropzone.style.display = 'none';
+    dom.fileTree.style.display = 'block';
+
+    // 2단계: 세션 파일별 IndexedDB 캐시 복원
+    let restoredCount = 0;
+    let lostCount = 0;
+    const totalFiles = session.files.length;
+
+    state.indexingJobs++;
+
+    for (let fi = 0; fi < totalFiles; fi++) {
+        const fileMeta = session.files[fi];
+        const { fileKey, fileName, lastModified, fileSize } = fileMeta;
+
+        // 파일 트리에 항목 등록 (File 객체 없이 메타만)
+        state.files.set(fileKey, {
+            file: null, // 원본 File 객체 없음
+            fileKey,
+            displayName: fileName,
+            path: fileName,
+            status: 'pending',
+            sheets: [],
+            totalRows: 0,
+            worker: null,
+            errorReason: null
+        });
+        renderFileTree();
+
+        // 캐시 확인
+        const cached = await cache.isFileCached(fileName, lastModified, fileSize);
+        if (!cached) {
+            // 캐시 유실 — 경고 상태로 표시
+            const info = state.files.get(fileKey);
+            if (info) {
+                info.status = 'error';
+                info.errorReason = t('sessionCacheLost');
+            }
+            lostCount++;
+            renderFileTree();
+            continue;
+        }
+
+        // 고속 복원: IndexedDB → SearchIndex 직접 적재
+        const fileInfo = state.files.get(fileKey);
+        let totalCells = 0;
+        const restored = await cache.loadFileData(fileName, lastModified, fileSize, (chunk, headers) => {
+            restoreCacheChunk(fileKey, fileName, chunk, headers);
+            totalCells += chunk.length;
+        });
+
+        if (restored) {
+            fileInfo.status = 'ready';
+            fileInfo.totalRows = totalCells || restored.totalCells || 0;
+            restoredCount++;
+        } else {
+            fileInfo.status = 'error';
+            fileInfo.errorReason = t('sessionCacheLost');
+            lostCount++;
+        }
+
+        renderFileTree();
+        const pct = Math.round(10 + ((fi + 1) / totalFiles * 80));
+        setStatus(`${t('sessionRestoring')} (${fi + 1}/${totalFiles})`, true, pct);
+    }
+
+    // 3단계: BM25 + Fuse.js 재구축
+    if (restoredCount > 0) {
+        setStatus(t('loadingBM25'), true, 95);
+        await new Promise(resolve => setTimeout(() => {
+            state.index.buildBM25();
+            resolve();
+        }, 0));
+        await updateFuseInstance();
+    }
+
+    state.indexingJobs--;
+    updateStats();
+    renderFileTree();
+
+    // 결과 보고
+    if (lostCount > 0) {
+        showToast(`${t('sessionRestored')} (${restoredCount}/${totalFiles}). ${lostCount}${t('sessionFiles')} ${t('sessionCacheLost')}`, 'warning');
+    } else {
+        showToast(`⚡ ${t('sessionRestored')} (${restoredCount}${t('sessionFiles')})`, 'success');
+    }
+    setStatus(`✅ ${t('sessionRestored')} (${restoredCount}${t('sessionFiles')})`, false);
+    logger.info(`세션 복원 완료: ${restoredCount}개 성공, ${lostCount}개 유실`);
+}
+
+/**
+ * 세션 히스토리 UI를 렌더링합니다.
+ */
+function renderSessionHistory() {
+    if (!dom.sessionList) return;
+
+    const sessions = getSessions();
+
+    if (sessions.length === 0) {
+        dom.sessionList.innerHTML = `<li class="session-empty">${t('sessionEmpty')}</li>`;
+        return;
+    }
+
+    let html = '';
+    for (const session of sessions) {
+        const fileCount = session.files.length;
+        const date = session.updatedAt
+            ? new Date(session.updatedAt).toLocaleString()
+            : new Date(session.createdAt).toLocaleString();
+
+        html += `
+      <li class="session-item" data-session-id="${session.id}">
+        <span class="session-item-icon">📋</span>
+        <div class="session-item-info">
+          <span class="session-item-title">${escapeHtml(session.title)}</span>
+          <span class="session-item-meta">${date}</span>
+        </div>
+        <div class="session-item-actions">
+          <button class="session-action-btn" data-action="restore" data-session-id="${session.id}" title="${t('sessionRestore')}">▶</button>
+          <button class="session-action-btn session-action-btn--danger" data-action="delete" data-session-id="${session.id}" title="${t('sessionDelete')}">✕</button>
+        </div>
+      </li>
+    `;
+    }
+
+    dom.sessionList.innerHTML = html;
+
+    // 이벤트 바인딩: 복원
+    dom.sessionList.querySelectorAll('[data-action="restore"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.sessionId;
+            // 현재 파일이 있으면 확인 대화
+            if (state.files.size > 0) {
+                if (!confirm(t('sessionConfirmRestore'))) return;
+            }
+            restoreSession(id);
+        });
+    });
+
+    // 이벤트 바인딩: 삭제
+    dom.sessionList.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.sessionId;
+            if (confirm(t('sessionConfirmDelete'))) {
+                deleteSession(id);
+            }
+        });
+    });
+
+    // 세션 아이템 전체 클릭 = 복원
+    dom.sessionList.querySelectorAll('.session-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = item.dataset.sessionId;
+            if (state.files.size > 0) {
+                if (!confirm(t('sessionConfirmRestore'))) return;
+            }
+            restoreSession(id);
+        });
+    });
 }
 
 // ── 상세 보기 모달 ──

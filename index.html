@@ -64,6 +64,13 @@
           </div>
           <!-- 파일 목록 -->
           <ul class="file-tree" id="file-tree" style="display:none;"></ul>
+          <!-- [v2.1.0] 세션 히스토리 -->
+          <div class="session-history" id="session-history">
+            <div class="session-history-header">
+              <span class="session-history-title" data-i18n="sessionHistory">📋 최근 작업</span>
+            </div>
+            <ul class="session-list" id="session-list"></ul>
+          </div>
         </div>
       </aside>
 
@@ -169,7 +176,7 @@
     </div>
 
     <!-- 숨겨진 파일 입력 -->
-    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none;">
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv,.pdf,.docx" style="display:none;">
   </div>
 </body>
 

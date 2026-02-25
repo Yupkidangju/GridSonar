@@ -74,7 +74,19 @@ const translations = {
         metaErrorReason: '_오류사유',
         exportErrorsTitle: '파싱 실패 파일 목록 내보내기',
         exportErrorsBtn: '⚠️ 실패 추출',
-        failedFilesName: '실패파일목록'
+        failedFilesName: '실패파일목록',
+        sessionHistory: '📋 최근 작업',
+        sessionRestore: '복원',
+        sessionDelete: '삭제',
+        sessionRestoring: '세션 복원 중...',
+        sessionRestored: '세션에서 복원 완료',
+        sessionSaved: '작업 세션이 저장되었습니다',
+        sessionDeleted: '세션이 삭제되었습니다',
+        sessionCacheLost: '⚠️ 캐시가 소실되었습니다. 원본 파일을 다시 드롭해주세요.',
+        sessionFiles: '개 파일',
+        sessionEmpty: '최근 작업 없음',
+        sessionConfirmDelete: '이 세션을 삭제하시겠습니까?',
+        sessionConfirmRestore: '현재 작업을 초기화하고 이 세션을 복원하시겠습니까?'
     },
     en: {
         appName: 'GridSonar',
@@ -145,7 +157,19 @@ const translations = {
         metaErrorReason: '_ErrorReason',
         exportErrorsTitle: 'Export parse failed files list',
         exportErrorsBtn: '⚠️ Failures',
-        failedFilesName: 'FailedFilesList'
+        failedFilesName: 'FailedFilesList',
+        sessionHistory: '📋 Recent Sessions',
+        sessionRestore: 'Restore',
+        sessionDelete: 'Delete',
+        sessionRestoring: 'Restoring session...',
+        sessionRestored: 'Session restored',
+        sessionSaved: 'Work session saved',
+        sessionDeleted: 'Session deleted',
+        sessionCacheLost: '⚠️ Cache was cleared. Please re-drop the original files.',
+        sessionFiles: 'files',
+        sessionEmpty: 'No recent sessions',
+        sessionConfirmDelete: 'Delete this session?',
+        sessionConfirmRestore: 'Clear current work and restore this session?'
     },
     ja: {
         appName: 'GridSonar',
@@ -216,7 +240,19 @@ const translations = {
         metaErrorReason: '_エラー理由',
         exportErrorsTitle: 'パース失敗ファイルリストを出力',
         exportErrorsBtn: '⚠️ 失敗抽出',
-        failedFilesName: '失敗ファイルリスト'
+        failedFilesName: '失敗ファイルリスト',
+        sessionHistory: '📋 最近の作業',
+        sessionRestore: '復元',
+        sessionDelete: '削除',
+        sessionRestoring: 'セッション復元中...',
+        sessionRestored: 'セッションから復元完了',
+        sessionSaved: '作業セッションを保存しました',
+        sessionDeleted: 'セッションを削除しました',
+        sessionCacheLost: '⚠️ キャッシュが消去されました。元のファイルを再度ドロップしてください。',
+        sessionFiles: '個のファイル',
+        sessionEmpty: '最近の作業なし',
+        sessionConfirmDelete: 'このセッションを削除しますか？',
+        sessionConfirmRestore: '現在の作業をクリアしてこのセッションを復元しますか？'
     },
     'zh-TW': {
         appName: 'GridSonar',
@@ -287,7 +323,19 @@ const translations = {
         metaErrorReason: '_錯誤原因',
         exportErrorsTitle: '匯出解析失敗檔案清單',
         exportErrorsBtn: '⚠️ 失敗擷取',
-        failedFilesName: '失敗檔案清單'
+        failedFilesName: '失敗檔案清單',
+        sessionHistory: '📋 最近工作',
+        sessionRestore: '還原',
+        sessionDelete: '刪除',
+        sessionRestoring: '正在還原工作階段...',
+        sessionRestored: '工作階段已還原',
+        sessionSaved: '工作階段已儲存',
+        sessionDeleted: '工作階段已刪除',
+        sessionCacheLost: '⚠️ 快取已清除。請重新拖放原始檔案。',
+        sessionFiles: '個檔案',
+        sessionEmpty: '沒有最近的工作',
+        sessionConfirmDelete: '確定要刪除此工作階段嗎？',
+        sessionConfirmRestore: '確定要清除目前工作並還原此工作階段嗎？'
     },
     'zh-CN': {
         appName: 'GridSonar',
@@ -358,7 +406,19 @@ const translations = {
         metaErrorReason: '_错误原因',
         exportErrorsTitle: '导出解析失败文件列表',
         exportErrorsBtn: '⚠️ 失败提取',
-        failedFilesName: '失败文件列表'
+        failedFilesName: '失败文件列表',
+        sessionHistory: '📋 最近工作',
+        sessionRestore: '恢复',
+        sessionDelete: '删除',
+        sessionRestoring: '正在恢复工作会话...',
+        sessionRestored: '工作会话已恢复',
+        sessionSaved: '工作会话已保存',
+        sessionDeleted: '工作会话已删除',
+        sessionCacheLost: '⚠️ 缓存已清除。请重新拖放原始文件。',
+        sessionFiles: '个文件',
+        sessionEmpty: '没有最近的工作',
+        sessionConfirmDelete: '确定要删除此工作会话吗？',
+        sessionConfirmRestore: '确定要清除当前工作并恢复此工作会话吗？'
     }
 };
 
