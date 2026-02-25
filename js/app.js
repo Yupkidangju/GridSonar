@@ -33,6 +33,8 @@ const state = {
     get isIndexing() { return this.indexingJobs > 0; },
     fuseInstance: null,
     currentQuery: '',
+    // [v2.10.0] 행 선택 세트 — visibleResults 인덱스 기반
+    selectedRows: new Set(),
 };
 
 // ── DOM 참조 ──
@@ -97,6 +99,12 @@ function cacheDomRefs() {
     // [v2.1.0] 세션 히스토리 DOM 참조
     dom.sessionHistory = $('session-history');
     dom.sessionList = $('session-list');
+    // [v2.10.0] 행 선택 내보내기
+    dom.selectionExportGroup = $('selection-export-group');
+    dom.selectionCount = $('selection-count');
+    dom.btnExportSelectedXlsx = $('btn-export-selected-xlsx');
+    dom.btnExportSelectedCsv = $('btn-export-selected-csv');
+    dom.btnClearSelection = $('btn-clear-selection');
 
     // [v2.4.0] 도움말 모달 참조
     dom.btnHelp = $('btn-help');
@@ -347,6 +355,18 @@ function bindEvents() {
     };
     if (dom.btnExportErrors) dom.btnExportErrors.addEventListener('click', exportErrorsHandler);
     if (dom.btnExportErrorsSidebar) dom.btnExportErrorsSidebar.addEventListener('click', exportErrorsHandler);
+
+    // [v2.10.0] 선택 행 내보내기
+    dom.btnExportSelectedXlsx.addEventListener('click', () => exportSelectedRows('xlsx'));
+    dom.btnExportSelectedCsv.addEventListener('click', () => exportSelectedRows('csv'));
+    dom.btnClearSelection.addEventListener('click', () => {
+        state.selectedRows.clear();
+        updateSelectionUI();
+        // 체크박스 시각 동기화
+        virtualScroll.lastStart = -1;
+        virtualScroll.lastEnd = -1;
+        renderVisibleRows();
+    });
 
     // 결과 내 필터링
     dom.filterInput.addEventListener('input', () => applyResultFilter());
@@ -1042,7 +1062,12 @@ function renderResults(results, query) {
 
     // [v2.5.1 Fix] 헤더는 tbody 행의 flex 스타일과 동일하게 적용
     // [v2.8.0] 열 정렬 클릭 이벤트 + 정렬 아이콘 표시
-    let thead = '<tr style="display:flex;width:100%;">';
+    // [v2.10.0] 전체선택 체크박스 열 prepend
+    const allChecked = results.length > 0 && state.selectedRows.size === results.length;
+    let thead = `<tr style="display:flex;width:100%;">
+        <th class="cb-col" style="flex:0 0 36px;padding:0 8px;">
+          <input type="checkbox" id="chk-all" title="전체 선택" ${allChecked ? 'checked' : ''}>
+        </th>`;
     for (const h of virtualScroll.headerList) {
         const isSort = virtualScroll.sortCol === h;
         const icon = isSort ? (virtualScroll.sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
@@ -1062,12 +1087,31 @@ function renderResults(results, query) {
     thead += '</tr>';
     dom.resultsThead.innerHTML = thead;
 
+    // [v2.10.0] 전체선택 체크박스 이벤트
+    const chkAll = dom.resultsThead.querySelector('#chk-all');
+    if (chkAll) {
+        chkAll.addEventListener('change', () => {
+            if (chkAll.checked) {
+                virtualScroll.visibleResults.forEach((_, i) => state.selectedRows.add(i));
+            } else {
+                state.selectedRows.clear();
+            }
+            updateSelectionUI();
+            virtualScroll.lastStart = -1;
+            virtualScroll.lastEnd = -1;
+            renderVisibleRows();
+        });
+    }
+
     // 가상 스크롤 상태 초기화
     virtualScroll.allResults = results;
     virtualScroll.visibleResults = results;
     // [v2.8.0] 정렬 상태 초기화 (새 검색 시 정렬 리셋)
     virtualScroll.sortCol = null;
     virtualScroll.sortDir = 'asc';
+    // [v2.10.0] 새 검색 시 선택 초기화
+    state.selectedRows.clear();
+    updateSelectionUI();
     // [v2.5.4] 하이라이트에 순수 키워드 + 열 필터 값 전달 (col:/regex 구문 자체는 제외)
     const parsed = parseQuery(query);
     virtualScroll.keywords = [
@@ -1094,7 +1138,9 @@ function renderResults(results, query) {
     dom.resultsTbody.removeEventListener('dblclick', onResultDblClick);
     dom.resultsTbody.addEventListener('dblclick', onResultDblClick);
 
-    // [v2.8.0] 헤더 정렬 클릭 이벤트 (기존 제거 후 재바인딩)
+    // [v2.10.0] 체크박스 이벤트 위임 (기존 제거 후 재바인딩)
+    dom.resultsTbody.removeEventListener('click', onTbodyCheckboxClick);
+    dom.resultsTbody.addEventListener('click', onTbodyCheckboxClick);
     dom.resultsThead.removeEventListener('click', onTheadSortClick);
     dom.resultsThead.addEventListener('click', onTheadSortClick);
 
@@ -1139,8 +1185,15 @@ function renderVisibleRows() {
     for (let i = startIdx; i < endIdx; i++) {
         const r = results[i];
         const top = i * rowHeight;
-        // 행을 절대 위치로 배치 (position: absolute)
-        html += `<tr data-idx="${i}" style="position:absolute;top:${top}px;left:0;right:0;height:${rowHeight}px;display:flex;align-items:center;">`;
+        const isChecked = state.selectedRows.has(i);
+        // [v2.10.0] 선택 행 배경 강조
+        const rowBg = isChecked ? 'background:rgba(124,107,255,0.12);' : '';
+        html += `<tr data-idx="${i}" style="position:absolute;top:${top}px;left:0;right:0;height:${rowHeight}px;display:flex;align-items:center;${rowBg}">`;
+
+        // [v2.10.0] 체크박스 td
+        html += `<td class="cb-col" style="flex:0 0 36px;padding:0 8px;pointer-events:none;">
+            <input type="checkbox" class="row-checkbox" data-row-idx="${i}" ${isChecked ? 'checked' : ''} style="pointer-events:all;cursor:pointer;">
+        </td>`;
 
         for (const h of headerList) {
             if (h === t('metaMatch')) {
@@ -1178,6 +1231,65 @@ function onVirtualScroll() {
         virtualScroll.scrollRAF = null;
         renderVisibleRows();
     });
+}
+
+/**
+ * [v2.10.0] tbody 체크박스 클릭 이벤트 위임 핸들러
+ * 체크박스 클릭 시 selectedRows Set 업데이트 후 UI 동기화
+ */
+function onTbodyCheckboxClick(e) {
+    const chk = e.target.closest('.row-checkbox');
+    if (!chk) return;
+    const idx = parseInt(chk.dataset.rowIdx);
+    if (isNaN(idx)) return;
+
+    if (chk.checked) {
+        state.selectedRows.add(idx);
+    } else {
+        state.selectedRows.delete(idx);
+    }
+    // 행 배경 즉시 반영
+    const tr = chk.closest('tr');
+    if (tr) tr.style.background = chk.checked ? 'rgba(124,107,255,0.12)' : '';
+
+    // 전체선택 체크박스 indeterminate 상태 반영
+    const chkAll = dom.resultsThead.querySelector('#chk-all');
+    if (chkAll) {
+        const total = virtualScroll.visibleResults.length;
+        chkAll.checked = state.selectedRows.size === total;
+        chkAll.indeterminate = state.selectedRows.size > 0 && state.selectedRows.size < total;
+    }
+    updateSelectionUI();
+}
+
+/**
+ * [v2.10.0] 선택 카운트 표시 및 내보내기 그룹 표시/숨김
+ */
+function updateSelectionUI() {
+    const n = state.selectedRows.size;
+    if (n === 0) {
+        dom.selectionExportGroup.style.display = 'none';
+    } else {
+        dom.selectionExportGroup.style.display = 'flex';
+        dom.selectionCount.textContent = `${n}행 선택`;
+    }
+}
+
+/**
+ * [v2.10.0] 선택된 행만 내보내기
+ * @param {'xlsx'|'csv'} format
+ */
+async function exportSelectedRows(format) {
+    const selected = [...state.selectedRows]
+        .sort((a, b) => a - b)
+        .map(i => virtualScroll.visibleResults[i])
+        .filter(Boolean);
+    if (selected.length === 0) {
+        showToast('⚠️ 선택된 행이 없습니다', 'warning');
+        return;
+    }
+    await exportResults(selected, format, null, state.files);
+    showToast(`✅ ${selected.length}행 ${t('exportSuccess')} (${format.toUpperCase()})`, 'success');
 }
 
 /**

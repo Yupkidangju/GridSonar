@@ -646,6 +646,41 @@
     color: #a855f7;
 }
 
+/* [v2.10.0] 체크박스 열 */
+.cb-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* [v2.10.0] 선택 내보내기 그룹 */
+.selection-export-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124, 107, 255, 0.1);
+    border: 1px solid rgba(124, 107, 255, 0.3);
+    border-radius: 8px;
+    padding: 2px 8px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.selection-count {
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--color-accent, #a89dff);
+    white-space: nowrap;
+}
+
+.btn--accent {
+    border-color: rgba(124, 107, 255, 0.5) !important;
+    color: var(--color-accent, #a89dff) !important;
+}
+
+.btn--accent:hover {
+    background: rgba(124, 107, 255, 0.2) !important;
+}
+
 /* [v2.8.0] ↑↓ 키보드 탐색 선택 행 강조 */
 .row-focused td {
     background: rgba(124, 107, 255, 0.18) !important;

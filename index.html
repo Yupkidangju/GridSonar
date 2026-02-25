@@ -138,6 +138,15 @@
                 <input type="range" id="sim-slider" class="similarity-slider" min="30" max="100" value="60">
                 <span id="sim-value">60%</span>
               </div>
+              <!-- [v2.10.0] 행 선택 내보내기 UI -->
+              <div id="selection-export-group" class="selection-export-group" style="display:none;">
+                <span id="selection-count" class="selection-count">0개 선택</span>
+                <button id="btn-export-selected-xlsx" class="btn btn--sm btn--accent" title="선택 행 XLSX 내보내기">✅
+                  XLSX</button>
+                <button id="btn-export-selected-csv" class="btn btn--sm btn--accent" title="선택 행 CSV 내보내기">✅
+                  CSV</button>
+                <button id="btn-clear-selection" class="btn btn--sm" title="선택 해제">✕</button>
+              </div>
               <button id="btn-export-errors" class="btn btn--sm" data-i18n-title="exportErrorsTitle"
                 style="display:none; border-color:var(--danger); color:var(--danger)"><span
                   data-i18n="exportErrorsBtn">⚠️ 실패 추출</span></button>
