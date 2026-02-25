@@ -30,24 +30,60 @@ function loadPapaParse() {
 
 function loadPdfJS() {
     if (typeof pdfjsLib !== 'undefined') return pdfjsLib;
-    // [v2.1.2] pdf.js v3.11.174 — Worker 내 Nested Worker/FakeWorker 완전 차단
+
+    // [v2.1.3] Worker 환경용 document 폴리필
     //
-    // 문제 체인:
-    //   1) workerSrc 설정 → Nested Worker 생성 시도 → CORS 차단
-    //   2) workerSrc 미설정 → document.currentScript로 fallback 경로 탐색
-    //                        → Worker 환경에 document 없음 → "document is not defined"
+    // 근본 원인:
+    //   pdf.js v3.x는 내부적으로 PDFWorker 생성 시 다음 순서를 따름:
+    //   1) Nested Worker 생성 시도 → CORS 차단 (Worker 내에서 CDN 워커 생성 불가)
+    //   2) FakeWorker fallback 전환 →
+    //      a) document.currentScript.src 로 fallback 워커 소스 탐색
+    //      b) document.createElement('style') 로 CSS 주입
+    //      → Worker 스레드에는 document 객체 자체가 없음 → 크래시
     //
     // 해결 전략:
-    //   1) pdf.worker.min.js를 importScripts로 현재 스레드에 직접 로드
-    //   2) GlobalWorkerOptions.workerPort에 더미 MessageChannel 포트 할당
-    //      → pdf.js가 "이미 외부에서 워커가 연결되었다"고 판단
-    //      → Nested Worker 생성/FakeWorker fallback 코드를 완전히 건너뜀
-    importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
-    importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js');
+    //   1단계: Worker에 document 최소 스텁 폴리필 제공
+    //          → FakeWorker가 document 접근해도 에러 없이 진행
+    //   2단계: pdf.worker.min.js를 importScripts로 동일 스레드에 로드
+    //          → globalThis.pdfjsWorker 에 워커 코드가 등록됨
+    //   3단계: FakeWorker가 globalThis.pdfjsWorker.WorkerMessageHandler 감지
+    //          → 별도 스크립트 로딩 없이 동일 스레드에서 직접 실행
+    //
+    // 이전 실패한 접근법:
+    //   - importScripts만 사용 (v2.0.2): document fallback 경로를 차단 못함
+    //   - workerPort 더미 포트 (v2.1.2): pdf.js가 실제 메시지 응답을 기대하므로 동작 안함
+    if (typeof document === 'undefined') {
+        const noop = () => { };
+        const mockElement = () => ({
+            sheet: { insertRule: noop, deleteRule: noop, cssRules: [] },
+            style: {},
+            setAttribute: noop,
+            getAttribute: () => null,
+            appendChild: () => mockElement(),
+            removeChild: noop,
+            parentNode: null,
+            textContent: '',
+        });
+        self.document = {
+            currentScript: { src: '' },
+            baseURI: self.location?.href || '',
+            createElement: () => mockElement(),
+            head: { appendChild: noop, removeChild: noop },
+            body: { appendChild: noop, removeChild: noop },
+            documentElement: { style: {} },
+            getElementById: () => null,
+            getElementsByTagName: () => [],
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener: noop,
+            removeEventListener: noop,
+        };
+    }
 
-    // 더미 포트로 워커 연결 상태를 시뮬레이션
-    const channel = new MessageChannel();
-    pdfjsLib.GlobalWorkerOptions.workerPort = channel.port1;
+    // 1단계: 메인 라이브러리 로드 (document 폴리필 덕분에 초기화 에러 없음)
+    importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
+    // 2단계: 워커 코드 로드 → globalThis.pdfjsWorker 등록
+    importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js');
 
     return pdfjsLib;
 }

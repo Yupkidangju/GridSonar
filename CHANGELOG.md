@@ -25,6 +25,11 @@
 ### 수정됨 (Fixed)
 - **PDF "document is not defined" 에러 근본 해결** — `pdfjsLib.GlobalWorkerOptions.workerPort`에 `MessageChannel` 더미 포트를 할당하여 pdf.js가 "외부 워커가 이미 연결됨" 상태로 인식하도록 강제. 이전 `importScripts`만으로는 `document.currentScript` fallback 경로 탐색을 차단하지 못해 캐시 삭제 후 에러 재발.
 
+## [2.1.3] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **PDF "document is not defined" 에러 최종 해결 (document 폴리필)** — Worker 환경에 `document` 객체의 최소 스텁 폴리필을 제공. pdf.js FakeWorker가 `document.currentScript.src`, `document.createElement('style')` 등에 접근할 때 에러 없이 진행. 이후 FakeWorker가 `globalThis.pdfjsWorker.WorkerMessageHandler`를 감지하여 동일 스레드에서 직접 실행. 이전 실패: importScripts만 사용(v2.0.2), workerPort 더미 포트(v2.1.2) 모두 불완전.
+
 ## [2.0.2] - 2026-02-25
 
 ### 수정됨 (Fixed)
