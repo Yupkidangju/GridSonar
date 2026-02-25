@@ -328,22 +328,24 @@ function _applyAndCondition(index, query, rowScores) {
         const rowData = index.rows.get(rowKey);
         if (!rowData) continue;
 
-        const rowText = Object.values(rowData.cells).join(' ').toLowerCase();
+        // [v2.5.3 Fix] 원본/소문자 텍스트 분리: 정규식은 원본 대소문자, 키워드는 소문자로 검사
+        const rowTextOriginal = Object.values(rowData.cells).join(' ');
+        const rowTextLower = rowTextOriginal.toLowerCase();
         let allPassed = true;
 
-        // 1. 일반 키워드 AND 검사: 모든 키워드가 행 텍스트에 포함되어야 함
+        // 1. 일반 키워드 AND 검사: 소문자 텍스트로 비교
         if (query.keywords.length > 0) {
             const keywordsPassed = query.keywords.every(
-                kw => rowText.includes(kw.toLowerCase())
+                kw => rowTextLower.includes(kw.toLowerCase())
             );
             if (!keywordsPassed) allPassed = false;
         }
 
-        // 2. 정규식 AND 검사: 모든 정규식 패턴이 행 텍스트와 매칭되어야 함
+        // 2. 정규식 AND 검사: 원본 대소문자 유지 텍스트로 검사 (/Apple/은 대문자 A 필요)
         if (allPassed && query.regexFilters.length > 0) {
             const regexPassed = query.regexFilters.every(regex => {
                 regex.lastIndex = 0;
-                return regex.test(rowText);
+                return regex.test(rowTextOriginal);
             });
             if (!regexPassed) allPassed = false;
         }
@@ -359,15 +361,29 @@ function _applyAndCondition(index, query, rowScores) {
             if (!rangePassed) allPassed = false;
         }
 
-        // 4. 열 필터 AND 검사: 각 columnFilter의 열에 keyword가 포함되어야 함
+        // 4. 열 필터 AND 검사: .filter().으로 부분 일치하는 모든 열을 가져오고 .some()으로 검사
+        // [v2.5.3 Fix] .find() 단일 매칭 버그: "영문이름"이 "이름"보다 먼저 걸리는 문제 해결
         if (allPassed && query.columnFilters.length > 0) {
             for (const { column, keyword } of query.columnFilters) {
                 const colLower = column.toLowerCase();
                 const kwLower = keyword.toLowerCase();
-                const targetCol = rowData.headers.find(
+
+                // 부분 일치하는 모든 열을 가져옴
+                const targetCols = rowData.headers.filter(
                     h => h.toLowerCase().includes(colLower)
                 );
-                if (!targetCol || !(rowData.cells[targetCol] || '').toLowerCase().includes(kwLower)) {
+
+                // 매칭되는 열이 없으면 실패
+                if (targetCols.length === 0) {
+                    allPassed = false;
+                    break;
+                }
+
+                // 찾은 열들 중 하나라도 keyword를 포함하면 통과
+                const passed = targetCols.some(col =>
+                    (rowData.cells[col] || '').toLowerCase().includes(kwLower)
+                );
+                if (!passed) {
                     allPassed = false;
                     break;
                 }
@@ -431,34 +447,25 @@ function _columnSearch(index, column, keyword, rowScores) {
 }
 
 /**
- * [v2.5.1] 정규식 검색: vocabulary(인버티드 인덱스 키) 기반 최적화
+ * [v2.5.3] 정규식 검색: 원본 셀 값에 대한 O(N) 풀스캔 (상한 없음)
  * 
- * 기존 방식: 전체 셀 O(N) 풀스캔 + 50K 상한 → 대량 데이터에서 결과 누락
- * 새 방식: vocabulary(고유 토큰)만 정규식 테스트 → 매칭 토큰의 셀을
- *          인버티드 인덱스에서 O(1)로 조회. 상한 없이 전수 검색 가능.
+ * vocabulary(토큰) 기반 최적화는 토큰화 시 하이픈/공백이 제거되고
+ * 소문자로 변환되어 /\d{3}-\d{4}/, /[A-Z]+/ 등의 정규식이
+ * 절대 매칭되지 않는 치명적 결함이 있어 원본 셀 풀스캔으로 복원.
+ * V8 엔진에서 100만 셀 regex.test() 루프는 20~40ms 내외.
  * 
  * @param {Object} index - 검색 인덱스
  * @param {RegExp} regex - 적용할 정규식
  * @param {Map} rowScores - 행별 점수 맵
  */
 function _regexSearch(index, regex, rowScores) {
-    // 인버티드 인덱스의 키(고유 토큰)를 대상으로 정규식 테스트
-    // 데이터가 100만 행이어도 고유 단어는 수만 개 수준
-    const matchedCellIndices = new Set();
-
-    for (const [token, cellIndices] of index.invertedIndex) {
-        regex.lastIndex = 0;
-        if (regex.test(token)) {
-            for (const idx of cellIndices) {
-                matchedCellIndices.add(idx);
-            }
-        }
-    }
-
-    // 매칭된 셀 인덱스에서 행 점수 누적
-    for (const cellIdx of matchedCellIndices) {
-        const cell = index.cells[cellIdx];
+    for (let i = 0; i < index.cells.length; i++) {
+        const cell = index.cells[i];
         if (cell === null) continue;
+
+        // 원본 셀 값(cell.value)에 정규식 직접 검사 (대소문자/특수문자 보존)
+        regex.lastIndex = 0;
+        if (!regex.test(cell.value)) continue;
 
         const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
         const sim = 0.95;
