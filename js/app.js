@@ -147,8 +147,39 @@ function bindEvents() {
             e.preventDefault();
             performSearch();
         }
+        // [v2.8.0] ↑↓ 방향키: 결과 행 탐색
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateResults(e.key === 'ArrowDown' ? 1 : -1);
+        }
     });
     dom.searchInput.addEventListener('focus', () => showSearchHistory());
+
+    // [v2.8.0] 전역 키보드 단축키
+    // Ctrl+K : 검색창 포커스 (macOS는 Cmd+K)
+    // Esc    : 검색창 내용 지우기 / 모달 닫기
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+K or Cmd+K
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            dom.searchInput.focus();
+            dom.searchInput.select();
+            return;
+        }
+        // Esc: 상세 모달 먼저 닫고, 없으면 검색창 초기화
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('detail-modal');
+            if (modal && modal.style.display !== 'none') {
+                closeDetailModal();
+                return;
+            }
+            if (dom.searchInput.value) {
+                dom.searchInput.value = '';
+                hideSearchHistory();
+            }
+            return;
+        }
+    });
 
     // [v1.1.5] 디바운스 300ms 실시간 검색 (구글 스타일 UX)
     let searchDebounceTimer = null;
@@ -956,6 +987,9 @@ const virtualScroll = {
     scrollRAF: null,      // requestAnimationFrame ID
     lastStart: -1,        // 이전 렌더링 시작 인덱스 (중복 렌더링 방지)
     lastEnd: -1,          // 이전 렌더링 끝 인덱스
+    // [v2.8.0] 열 정렬 상태
+    sortCol: null,        // 현재 정렬 중인 열 이름 (null = 정렬 없음)
+    sortDir: 'asc',       // 정렬 방향 ('asc' | 'desc')
 };
 
 /**
@@ -988,16 +1022,22 @@ function renderResults(results, query) {
     virtualScroll.headerList = [...allHeaders];
 
     // [v2.5.1 Fix] 헤더는 tbody 행의 flex 스타일과 동일하게 적용
+    // [v2.8.0] 열 정렬 클릭 이벤트 + 정렬 아이콘 표시
     let thead = '<tr style="display:flex;width:100%;">';
     for (const h of virtualScroll.headerList) {
+        const isSort = virtualScroll.sortCol === h;
+        const icon = isSort ? (virtualScroll.sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
+        const iconSpan = `<span class="sort-icon" style="opacity:${isSort ? 1 : 0.3};font-size:0.7em;">${icon}</span>`;
+        const sortAttr = `data-sort-col="${escapeHtml(h)}"`;
+        const cursor = 'cursor:pointer;user-select:none;';
         if (h === t('metaMatch')) {
-            thead += `<th style="flex:0 0 120px;text-align:left;">${escapeHtml(h)}</th>`;
+            thead += `<th ${sortAttr} style="flex:0 0 120px;text-align:left;${cursor}">${escapeHtml(h)}${iconSpan}</th>`;
         } else if (h === t('metaFile')) {
-            thead += `<th style="flex:0 0 180px;text-align:left;">${escapeHtml(h)}</th>`;
+            thead += `<th ${sortAttr} style="flex:0 0 180px;text-align:left;${cursor}">${escapeHtml(h)}${iconSpan}</th>`;
         } else if (h === t('metaSheet')) {
-            thead += `<th style="flex:0 0 120px;text-align:left;">${escapeHtml(h)}</th>`;
+            thead += `<th ${sortAttr} style="flex:0 0 120px;text-align:left;${cursor}">${escapeHtml(h)}${iconSpan}</th>`;
         } else {
-            thead += `<th style="flex:1;min-width:0;text-align:left;">${escapeHtml(h)}</th>`;
+            thead += `<th ${sortAttr} style="flex:1;min-width:0;text-align:left;${cursor}">${escapeHtml(h)}${iconSpan}</th>`;
         }
     }
     thead += '</tr>';
@@ -1006,6 +1046,9 @@ function renderResults(results, query) {
     // 가상 스크롤 상태 초기화
     virtualScroll.allResults = results;
     virtualScroll.visibleResults = results;
+    // [v2.8.0] 정렬 상태 초기화 (새 검색 시 정렬 리셋)
+    virtualScroll.sortCol = null;
+    virtualScroll.sortDir = 'asc';
     // [v2.5.4] 하이라이트에 순수 키워드 + 열 필터 값 전달 (col:/regex 구문 자체는 제외)
     const parsed = parseQuery(query);
     virtualScroll.keywords = [
@@ -1031,6 +1074,10 @@ function renderResults(results, query) {
     // 더블클릭 이벤트 (기존 제거 후 재바인딩)
     dom.resultsTbody.removeEventListener('dblclick', onResultDblClick);
     dom.resultsTbody.addEventListener('dblclick', onResultDblClick);
+
+    // [v2.8.0] 헤더 정렬 클릭 이벤트 (기존 제거 후 재바인딩)
+    dom.resultsThead.removeEventListener('click', onTheadSortClick);
+    dom.resultsThead.addEventListener('click', onTheadSortClick);
 
     // 초기 렌더링
     dom.resultsTableContainer.scrollTop = 0;
@@ -1115,6 +1162,101 @@ function onVirtualScroll() {
 }
 
 /**
+ * [v2.8.0] 헤더 th 클릭 → 열 정렬 핸들러
+ */
+function onTheadSortClick(e) {
+    const th = e.target.closest('[data-sort-col]');
+    if (!th) return;
+    const col = th.dataset.sortCol;
+
+    if (virtualScroll.sortCol === col) {
+        if (virtualScroll.sortDir === 'asc') {
+            virtualScroll.sortDir = 'desc';
+        } else {
+            // 3번째 클릭: 원래 순서로 복원
+            virtualScroll.sortCol = null;
+            virtualScroll.sortDir = 'asc';
+        }
+    } else {
+        virtualScroll.sortCol = col;
+        virtualScroll.sortDir = 'asc';
+    }
+    applySort();
+}
+
+/**
+ * [v2.8.0] visibleResults를 sortCol/sortDir에 따라 정렬 후 재렌더링
+ * 숫자를 숫자로, 그 외는 문자열로 비교 (자연 정렬)
+ */
+function applySort() {
+    const { sortCol, sortDir } = virtualScroll;
+
+    if (!sortCol) {
+        // 정렬 해제: 원본 순서 (검색 스코어 순)
+        // allResults에서 현재 필터 상태를 유지하여 복원
+        const filterText = dom.filterInput ? dom.filterInput.value.toLowerCase().trim() : '';
+        if (filterText) {
+            virtualScroll.visibleResults = virtualScroll.allResults.filter(r => {
+                const rowText = Object.values(r.row.cells).join(' ').toLowerCase();
+                return rowText.includes(filterText);
+            });
+        } else {
+            virtualScroll.visibleResults = [...virtualScroll.allResults];
+        }
+    } else {
+        const metaMatch = t('metaMatch');
+        const metaFile = t('metaFile');
+        const metaSheet = t('metaSheet');
+
+        // 정렬용 값 추출 함수
+        const getVal = (r) => {
+            if (sortCol === metaMatch) return r.similarity;
+            if (sortCol === metaFile) return r.row.fileName || '';
+            if (sortCol === metaSheet) return r.row.sheetName || '';
+            return r.row.cells[sortCol] || '';
+        };
+
+        virtualScroll.visibleResults = [...virtualScroll.visibleResults].sort((a, b) => {
+            const va = getVal(a);
+            const vb = getVal(b);
+            let cmp;
+            // 숫자인지 확인 (similarity는 항상 숫자)
+            const na = parseFloat(va);
+            const nb = parseFloat(vb);
+            if (!isNaN(na) && !isNaN(nb)) {
+                cmp = na - nb;
+            } else {
+                // 문자열 자연 정렬 (한국어 포함)
+                cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+            }
+            return sortDir === 'asc' ? cmp : -cmp;
+        });
+    }
+
+    // 헤더 아이콘 갱신
+    dom.resultsThead.querySelectorAll('[data-sort-col]').forEach(th => {
+        const col = th.dataset.sortCol;
+        const icon = th.querySelector('.sort-icon');
+        if (!icon) return;
+        if (col === virtualScroll.sortCol) {
+            icon.textContent = virtualScroll.sortDir === 'asc' ? ' ▲' : ' ▼';
+            icon.style.opacity = '1';
+        } else {
+            icon.textContent = ' ⇅';
+            icon.style.opacity = '0.3';
+        }
+    });
+
+    // 가상 스크롤 높이 재계산 + 상단으로 스크롤 + 재렌더링
+    const totalHeight = virtualScroll.visibleResults.length * virtualScroll.ROW_HEIGHT;
+    dom.resultsTbody.style.height = totalHeight + 'px';
+    virtualScroll.lastStart = -1;
+    virtualScroll.lastEnd = -1;
+    dom.resultsTableContainer.scrollTop = 0;
+    renderVisibleRows();
+}
+
+/**
  * 결과 행 더블클릭 → 상세 보기
  */
 function onResultDblClick(e) {
@@ -1152,6 +1294,46 @@ function applyResultFilter() {
     virtualScroll.lastEnd = -1;
     dom.resultsTableContainer.scrollTop = 0;
     renderVisibleRows();
+}
+
+/**
+ * [v2.8.0] ↑↓ 방향키로 결과 행을 탐색합니다.
+ * 포커스된 행을 CSS 클래스로 강조하고 뷰포트 내로 자동 스크롤합니다.
+ * @param {number} delta - 이동 방향 (+1: 아래, -1: 위)
+ */
+function navigateResults(delta) {
+    const results = virtualScroll.visibleResults;
+    if (results.length === 0) return;
+
+    // 현재 포커스된 행 인덱스 파악 (없으면 -1)
+    const sel = dom.resultsTbody.querySelector('tr.row-focused');
+    let curIdx = sel ? parseInt(sel.dataset.idx) : -1;
+
+    // 새 인덱스 계산 (경계 처리)
+    let nextIdx = curIdx + delta;
+    if (nextIdx < 0) nextIdx = 0;
+    if (nextIdx >= results.length) nextIdx = results.length - 1;
+
+    // 해당 행이 뷰포트에 들어오도록 스크롤
+    const container = dom.resultsTableContainer;
+    const theadHeight = dom.resultsThead.offsetHeight || 36;
+    const rowHeight = virtualScroll.ROW_HEIGHT;
+    const rowTop = nextIdx * rowHeight + theadHeight;
+    const rowBot = rowTop + rowHeight;
+    const visTop = container.scrollTop;
+    const visBot = visTop + container.clientHeight;
+
+    if (rowTop < visTop) {
+        container.scrollTop = rowTop - theadHeight;
+    } else if (rowBot > visBot) {
+        container.scrollTop = rowBot - container.clientHeight;
+    }
+
+    // renderVisibleRows 호출 후 포커스 클래스 부여
+    renderVisibleRows();
+    dom.resultsTbody.querySelectorAll('tr').forEach(tr => {
+        tr.classList.toggle('row-focused', parseInt(tr.dataset.idx) === nextIdx);
+    });
 }
 
 // ── 파일 트리 렌더링 ──

@@ -613,7 +613,20 @@
     color: #a855f7;
 }
 
-/* 키워드 하이라이트 */
+/* [v2.8.0] ↑↓ 키보드 탐색 선택 행 강조 */
+.row-focused td {
+    background: rgba(124, 107, 255, 0.18) !important;
+    outline: 1px solid rgba(124, 107, 255, 0.5);
+    outline-offset: -1px;
+}
+
+/* [v2.8.0] 헤더 th 호버 효과 (정렬 클릭 힌트) */
+#results-table thead th:hover {
+    background: rgba(124, 107, 255, 0.12);
+    color: var(--color-accent, #a89dff);
+    transition: background 0.15s, color 0.15s;
+}
+
 .highlight {
     background: rgba(210, 153, 34, 0.25);
     color: inherit;
