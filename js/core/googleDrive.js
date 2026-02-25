@@ -19,6 +19,11 @@ import { logger } from '../utils/logger.js';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 
+// [v2.6.2] 공용(배포용) API 인증 정보
+// 보안 지침: GCP 콘솔에서 위 API Key의 "HTTP 리퍼러"를 yupkidangju.github.io 및 localhost 로 제한 필수!
+const DEFAULT_API_KEY = 'AIzaSyCOWlOhdPrAW0SNpzLZpSIPQjhQOierhjY';
+const DEFAULT_CLIENT_ID = '1055909088365-aq468re444qu85lr4h2etc5pfmajtr4s.apps.googleusercontent.com';
+
 // Google Workspace 문서 → 내보내기 변환 매핑
 const EXPORT_MIME_MAP = {
     'application/vnd.google-apps.spreadsheet':
@@ -51,8 +56,8 @@ let gisInited = false;
  */
 function getDriveConfig() {
     return {
-        apiKey: getConfig('driveApiKey', ''),
-        clientId: getConfig('driveClientId', ''),
+        apiKey: getConfig('driveApiKey', DEFAULT_API_KEY),
+        clientId: getConfig('driveClientId', DEFAULT_CLIENT_ID),
     };
 }
 
@@ -72,7 +77,10 @@ function saveDriveConfig(apiKey, clientId) {
  */
 function isConfigured() {
     const { apiKey, clientId } = getDriveConfig();
-    return !!(apiKey && clientId);
+    // 설정값이 비어있거나 플레이스홀더 그대로면 미설정으로 간주
+    if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') return false;
+    if (!clientId || clientId === 'YOUR_CLIENT_ID_HERE') return false;
+    return true;
 }
 
 /**
