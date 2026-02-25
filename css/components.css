@@ -464,6 +464,35 @@
     background: var(--accent-glow);
 }
 
+/* [v2.2.0] 가상 스크롤링 지원 */
+.results-table tbody {
+    position: relative;
+    display: block;
+}
+
+.results-table tbody tr {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    left: 0;
+    right: 0;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.results-table tbody tr td {
+    border-bottom: none;
+}
+
+.results-table thead tr {
+    display: flex;
+}
+
+.results-table thead th {
+    flex: 1;
+    min-width: 0;
+}
+
 /* 매칭 타입 배지 */
 .match-badge {
     display: inline-flex;

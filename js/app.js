@@ -836,7 +836,7 @@ function performSearch() {
         try {
             state.results = search(state.index, query, {
                 minSimilarity: minSim,
-                maxResults: 500,
+                maxResults: 5000,
                 fuseInstance: state.fuseInstance
             });
 
@@ -862,7 +862,27 @@ function performSearch() {
     });
 }
 
-// ── 결과 렌더링 ──
+// ── 결과 렌더링 ([v2.2.0] 가상 스크롤링) ──
+
+/**
+ * 가상 스크롤 상태 관리
+ */
+const virtualScroll = {
+    ROW_HEIGHT: 36,       // 행 고정 높이 (px)
+    BUFFER: 10,           // 뷰포트 위아래 여유 행 수
+    allResults: [],       // 전체 결과 (원본)
+    visibleResults: [],   // 필터 적용 후 렌더링 대상
+    headerList: [],       // 열 목록
+    keywords: [],         // 검색 키워드
+    scrollRAF: null,      // requestAnimationFrame ID
+    lastStart: -1,        // 이전 렌더링 시작 인덱스 (중복 렌더링 방지)
+    lastEnd: -1,          // 이전 렌더링 끝 인덱스
+};
+
+/**
+ * 결과 테이블의 헤더를 생성하고 가상 스크롤 상태를 초기화합니다.
+ * DOM에는 뗤만 렌더링하고 실제 행은 renderVisibleRows()에서 처리.
+ */
 function renderResults(results, query) {
     if (results.length === 0) {
         dom.resultsToolbar.style.display = 'none';
@@ -886,91 +906,159 @@ function renderResults(results, query) {
     for (const r of results) {
         for (const h of r.row.headers) allHeaders.add(h);
     }
-    const headerList = [...allHeaders];
+    virtualScroll.headerList = [...allHeaders];
 
     let thead = '<tr>';
-    for (const h of headerList) {
+    for (const h of virtualScroll.headerList) {
         thead += `<th>${escapeHtml(h)}</th>`;
     }
     thead += '</tr>';
     dom.resultsThead.innerHTML = thead;
 
-    // 가상 스크롤링 대신 제한된 렌더링 (500건 이하)
-    const displayResults = results.slice(0, 500);
-    const keywords = query.toLowerCase().split(/\s+/).filter(k => !k.startsWith('-'));
+    // 가상 스크롤 상태 초기화
+    virtualScroll.allResults = results;
+    virtualScroll.visibleResults = results;
+    virtualScroll.keywords = query.toLowerCase().split(/\s+/).filter(k => !k.startsWith('-'));
+    virtualScroll.lastStart = -1;
+    virtualScroll.lastEnd = -1;
 
-    let tbody = '';
-    for (let i = 0; i < displayResults.length; i++) {
-        const r = displayResults[i];
-        tbody += `<tr data-idx="${i}" class="fade-in" style="animation-delay:${Math.min(i * 10, 300)}ms">`;
+    // [v2.2.0] tbody를 문서 흐름에서 분리하여 절대 높이로 배치
+    // 스크롤 컨테이너가 전체 높이 스페이서를 제공하고
+    // tbody는 뷰포트 내 행만 렌더링
+    const totalHeight = results.length * virtualScroll.ROW_HEIGHT;
+    dom.resultsTbody.style.position = 'relative';
+    dom.resultsTbody.style.height = totalHeight + 'px';
+    dom.resultsTbody.style.display = 'block';
+    dom.resultsTbody.innerHTML = '';
 
-        for (const h of headerList) {
-            if (h === '_매칭') {
-                const badgeClass = `match-badge--${r.matchType}`;
-                const label = matchLabel(r.matchType);
-                const simPct = Math.round(r.similarity * 100);
-                tbody += `<td><span class="match-badge ${badgeClass}">${label} ${simPct}%</span></td>`;
-            } else if (h === '_파일') {
-                tbody += `<td class="truncate" title="${escapeHtml(r.row.fileName)}">${escapeHtml(r.row.fileName)}</td>`;
-            } else if (h === '_시트') {
-                tbody += `<td class="truncate">${escapeHtml(r.row.sheetName)}</td>`;
-            } else {
-                const val = r.row.cells[h] || '';
-                // [v2.0.0] 긴 텍스트(200자 초과) → 키워드 주변 스니펫 표시
-                if (val.length > 200 && keywords.length > 0) {
-                    const snippet = buildSnippet(val, keywords, 80);
-                    tbody += `<td class="truncate snippet-cell" title="${escapeHtml(val.slice(0, 500))}...">${snippet}</td>`;
-                } else {
-                    const highlighted = highlightKeywords(val, keywords);
-                    tbody += `<td class="truncate" title="${escapeHtml(val)}">${highlighted}</td>`;
-                }
-            }
-        }
-        tbody += '</tr>';
-    }
+    // 스크롤 이벤트 바인딩 (기존 이벤트 제거 후 재바인딩)
+    dom.resultsTableContainer.removeEventListener('scroll', onVirtualScroll);
+    dom.resultsTableContainer.addEventListener('scroll', onVirtualScroll, { passive: true });
 
-    dom.resultsTbody.innerHTML = tbody;
+    // 더블클릭 이벤트 (기존 제거 후 재바인딩)
+    dom.resultsTbody.removeEventListener('dblclick', onResultDblClick);
+    dom.resultsTbody.addEventListener('dblclick', onResultDblClick);
 
-    // 더블 클릭 → 상세 보기
-    dom.resultsTbody.addEventListener('dblclick', (e) => {
-        const tr = e.target.closest('tr');
-        if (!tr) return;
-        const idx = parseInt(tr.dataset.idx);
-        if (!isNaN(idx) && displayResults[idx]) {
-            openDetailModal(displayResults[idx]);
-        }
-    });
+    // 초기 렌더링
+    dom.resultsTableContainer.scrollTop = 0;
+    renderVisibleRows();
 }
 
-// ── 결과 내 필터링 ──
-function applyResultFilter() {
-    const filterText = dom.filterInput.value.toLowerCase().trim();
-    if (!filterText) {
-        state.filteredResults = [];
-        // 모든 행 표시
-        const rows = dom.resultsTbody.querySelectorAll('tr');
-        rows.forEach(r => r.style.display = '');
-        dom.resultsCount.textContent = state.results.length;
+/**
+ * 스크롤 위치에 따라 뷰포트 내 행만 DOM에 렌더링합니다.
+ * 전체 결과 배열에서 보이는 범위의 행만 생성하여
+ * DOM 노드 수를 ~50개 이하로 유지합니다.
+ */
+function renderVisibleRows() {
+    const container = dom.resultsTableContainer;
+    const results = virtualScroll.visibleResults;
+    const rowHeight = virtualScroll.ROW_HEIGHT;
+    const buffer = virtualScroll.BUFFER;
+
+    if (results.length === 0) {
+        dom.resultsTbody.innerHTML = '';
         return;
     }
 
-    state.filteredResults = state.results.filter(r => {
-        const rowText = Object.values(r.row.cells).join(' ').toLowerCase();
-        return rowText.includes(filterText);
+    // 스크롤 오프셋에서 thead 높이 만큼 보정
+    const theadHeight = dom.resultsThead.offsetHeight || 36;
+    const scrollTop = Math.max(0, container.scrollTop - theadHeight);
+    const viewportHeight = container.clientHeight;
+
+    // 뷰포트에 보이는 행 범위 계산
+    const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer);
+    const endIdx = Math.min(results.length, Math.ceil((scrollTop + viewportHeight) / rowHeight) + buffer);
+
+    // 범위가 동일하면 렌더링 생략 (성능 최적화)
+    if (startIdx === virtualScroll.lastStart && endIdx === virtualScroll.lastEnd) return;
+    virtualScroll.lastStart = startIdx;
+    virtualScroll.lastEnd = endIdx;
+
+    const { headerList, keywords } = virtualScroll;
+    let html = '';
+
+    for (let i = startIdx; i < endIdx; i++) {
+        const r = results[i];
+        const top = i * rowHeight;
+        // 행을 절대 위치로 배치 (position: absolute)
+        html += `<tr data-idx="${i}" style="position:absolute;top:${top}px;left:0;right:0;height:${rowHeight}px;display:flex;align-items:center;">`;
+
+        for (const h of headerList) {
+            if (h === t('metaMatch')) {
+                const badgeClass = `match-badge--${r.matchType}`;
+                const label = matchLabel(r.matchType);
+                const simPct = Math.round(r.similarity * 100);
+                html += `<td style="flex:0 0 120px;"><span class="match-badge ${badgeClass}">${label} ${simPct}%</span></td>`;
+            } else if (h === t('metaFile')) {
+                html += `<td class="truncate" title="${escapeHtml(r.row.fileName)}" style="flex:0 0 180px;">${escapeHtml(r.row.fileName)}</td>`;
+            } else if (h === t('metaSheet')) {
+                html += `<td class="truncate" style="flex:0 0 120px;">${escapeHtml(r.row.sheetName)}</td>`;
+            } else {
+                const val = r.row.cells[h] || '';
+                if (val.length > 200 && keywords.length > 0) {
+                    const snippet = buildSnippet(val, keywords, 80);
+                    html += `<td class="truncate snippet-cell" title="${escapeHtml(val.slice(0, 500))}..." style="flex:1;min-width:0;">${snippet}</td>`;
+                } else {
+                    const highlighted = highlightKeywords(val, keywords);
+                    html += `<td class="truncate" title="${escapeHtml(val)}" style="flex:1;min-width:0;">${highlighted}</td>`;
+                }
+            }
+        }
+        html += '</tr>';
+    }
+
+    dom.resultsTbody.innerHTML = html;
+}
+
+/**
+ * 스크롤 이벤트 핸들러 (requestAnimationFrame으로 스로틀링)
+ */
+function onVirtualScroll() {
+    if (virtualScroll.scrollRAF) return;
+    virtualScroll.scrollRAF = requestAnimationFrame(() => {
+        virtualScroll.scrollRAF = null;
+        renderVisibleRows();
     });
+}
 
-    // 행 표시/숨김
-    const rows = dom.resultsTbody.querySelectorAll('tr');
-    const visibleIndices = new Set(state.filteredResults.map((_, i) => {
-        return state.results.indexOf(state.filteredResults[i]);
-    }));
+/**
+ * 결과 행 더블클릭 → 상세 보기
+ */
+function onResultDblClick(e) {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const idx = parseInt(tr.dataset.idx);
+    if (!isNaN(idx) && virtualScroll.visibleResults[idx]) {
+        openDetailModal(virtualScroll.visibleResults[idx]);
+    }
+}
 
-    rows.forEach(r => {
-        const idx = parseInt(r.dataset.idx);
-        r.style.display = visibleIndices.has(idx) ? '' : 'none';
-    });
+// ── 결과 내 필터링 ([v2.2.0] 가상 스크롤 연동) ──
+function applyResultFilter() {
+    const filterText = dom.filterInput.value.toLowerCase().trim();
 
-    dom.resultsCount.textContent = state.filteredResults.length;
+    if (!filterText) {
+        // 필터 해제: 전체 결과 다시 표시
+        virtualScroll.visibleResults = virtualScroll.allResults;
+        state.filteredResults = [];
+        dom.resultsCount.textContent = virtualScroll.allResults.length;
+    } else {
+        // 필터 적용: 일치하는 결과만 유지
+        state.filteredResults = virtualScroll.allResults.filter(r => {
+            const rowText = Object.values(r.row.cells).join(' ').toLowerCase();
+            return rowText.includes(filterText);
+        });
+        virtualScroll.visibleResults = state.filteredResults;
+        dom.resultsCount.textContent = state.filteredResults.length;
+    }
+
+    // 가상 스크롤 높이 재계산 + 렌더링
+    const totalHeight = virtualScroll.visibleResults.length * virtualScroll.ROW_HEIGHT;
+    dom.resultsTbody.style.height = totalHeight + 'px';
+    virtualScroll.lastStart = -1;
+    virtualScroll.lastEnd = -1;
+    dom.resultsTableContainer.scrollTop = 0;
+    renderVisibleRows();
 }
 
 // ── 파일 트리 렌더링 ──
