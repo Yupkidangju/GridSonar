@@ -14,6 +14,7 @@ const WEIGHT_CHOSUNG = 0.85;
 const WEIGHT_FUZZY = 0.7;
 const WEIGHT_BM25 = 0.3;
 const WEIGHT_RANGE = 0.9;
+const WEIGHT_REGEX = 0.95; // [v2.5.0] 정규식 검색 가중치
 
 /**
  * 행별 점수를 누적 갱신합니다. 최고 유사도와 매칭 유형을 추적.
@@ -68,7 +69,7 @@ export function search(index, rawQuery, options = {}) {
 
     const query = parseQuery(rawQuery);
 
-    if (query.keywords.length === 0 && query.ranges.length === 0 && query.columnFilters.length === 0) {
+    if (query.keywords.length === 0 && query.ranges.length === 0 && query.columnFilters.length === 0 && query.regexFilters.length === 0) {
         return [];
     }
 
@@ -99,6 +100,11 @@ export function search(index, rawQuery, options = {}) {
     // [v2.3.0] 열 모드 검색: 특정 열에서만 키워드 검색
     for (const { column, keyword } of query.columnFilters) {
         _columnSearch(index, column, keyword, rowScores);
+    }
+
+    // [v2.5.0] 정규식 검색: 전체 셀에 대해 정규식 테스트
+    for (const regex of query.regexFilters) {
+        _regexSearch(index, regex, rowScores);
     }
 
     // 계층 4: BM25 관련도 점수 가산
@@ -323,7 +329,7 @@ function _applyAndCondition(index, keywords, rowScores) {
 }
 
 // 가중치 상수 내보내기 (테스트/디버깅용)
-export { WEIGHT_EXACT, WEIGHT_CHOSUNG, WEIGHT_FUZZY, WEIGHT_BM25, WEIGHT_RANGE };
+export { WEIGHT_EXACT, WEIGHT_CHOSUNG, WEIGHT_FUZZY, WEIGHT_BM25, WEIGHT_RANGE, WEIGHT_REGEX };
 
 /**
  * [v2.3.0] 열 모드 검색: 특정 열(컨럼)에서만 키워드를 검색합니다.
@@ -368,5 +374,36 @@ function _columnSearch(index, column, keyword, rowScores) {
             similarity: sim
         };
         updateRowScore(rowScores, rowKey, score, 'exact', sim, match);
+    }
+}
+
+/**
+ * [v2.5.0] 정규식 검색: 전체 셀을 순회하며 정규식 테스트
+ * 성능 고려: 셀 수가 많으면 느려질 수 있으므로 최대 50,000개로 제한
+ * @param {Object} index - 검색 인덱스
+ * @param {RegExp} regex - 적용할 정규식
+ * @param {Map} rowScores - 행별 점수 맵
+ */
+function _regexSearch(index, regex, rowScores) {
+    const maxCells = Math.min(index.cells.length, 50000);
+
+    for (let i = 0; i < maxCells; i++) {
+        const cell = index.cells[i];
+        if (cell === null) continue;
+
+        // 정규식 lastIndex 초기화 (g 플래그 사용 시 필수)
+        regex.lastIndex = 0;
+        if (!regex.test(cell.value)) continue;
+
+        const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+        const sim = 0.95;
+        const score = WEIGHT_REGEX * sim;
+        const match = {
+            colName: cell.colName,
+            cellValue: cell.value,
+            matchType: 'regex',
+            similarity: sim
+        };
+        updateRowScore(rowScores, rowKey, score, 'regex', sim, match);
     }
 }

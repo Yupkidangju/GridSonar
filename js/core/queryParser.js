@@ -9,6 +9,7 @@
  * - '숫자~숫자' = 범위 검색
  * - [v2.3.0] 'col:열이름' 또는 '열:열이름' = 열 모드 검색
  *   다음 키워드가 해당 열에서만 검색됨
+ * - [v2.5.0] '/패턴/' 또는 '/패턴/i' = 정규식 검색
  * - 그 외 = 일반 키워드
  */
 
@@ -18,6 +19,9 @@ const RANGE_PATTERN = /^(-?\d+(?:\.\d+)?)\s*[~]\s*(-?\d+(?:\.\d+)?)$/;
 // [v2.3.0] 열 모드 패턴: col:열이름 또는 열:열이름
 const COLUMN_PATTERN = /^(?:col|열):(.+)$/i;
 
+// [v2.5.0] 정규식 패턴: /패턴/ 또는 /패턴/i 또는 /패턴/gi 등
+const REGEX_PATTERN = /^\/(.+)\/([gimsuy]*)$/;
+
 /**
  * 파싱된 검색 쿼리 구조체
  * @typedef {Object} SearchQuery
@@ -25,6 +29,7 @@ const COLUMN_PATTERN = /^(?:col|열):(.+)$/i;
  * @property {string[]} excludes - 제외 검색어 ('-' 접두사로 입력)
  * @property {Array<[number, number]>} ranges - 숫자 범위 [min, max] 배열
  * @property {Array<{column: string, keyword: string}>} columnFilters - [v2.3.0] 열 모드 필터
+ * @property {RegExp[]} regexFilters - [v2.5.0] 정규식 필터
  * @property {string} raw - 원본 검색 문자열
  */
 
@@ -38,12 +43,39 @@ export function parseQuery(rawQuery) {
     const excludes = [];
     const ranges = [];
     const columnFilters = [];
+    const regexFilters = [];
 
     if (!rawQuery || !rawQuery.trim()) {
-        return { keywords, excludes, ranges, columnFilters, raw: rawQuery || '' };
+        return { keywords, excludes, ranges, columnFilters, regexFilters, raw: rawQuery || '' };
     }
 
-    const tokens = rawQuery.trim().split(/\s+/);
+    // [v2.5.0] 정규식 토큰은 내부에 공백을 포함할 수 있으므로
+    // 슬래시로 감싼 패턴을 먼저 추출한 뒤, 나머지를 공백으로 분리
+    let remaining = rawQuery.trim();
+    const regexTokenPattern = /\/(?:[^/\\]|\\.)+\/[gimsuy]*/g;
+    let regexMatch;
+
+    while ((regexMatch = regexTokenPattern.exec(remaining)) !== null) {
+        const fullMatch = regexMatch[0];
+        const parsed = fullMatch.match(REGEX_PATTERN);
+        if (parsed) {
+            try {
+                const regex = new RegExp(parsed[1], parsed[2] || '');
+                regexFilters.push(regex);
+            } catch (e) {
+                // 잘못된 정규식은 일반 키워드로 처리하지 않고 무시
+            }
+        }
+    }
+
+    // 정규식 토큰을 제거한 나머지 문자열에서 일반 토큰 추출
+    remaining = remaining.replace(regexTokenPattern, '').trim();
+
+    if (!remaining) {
+        return { keywords, excludes, ranges, columnFilters, regexFilters, raw: rawQuery };
+    }
+
+    const tokens = remaining.split(/\s+/);
 
     // [v2.3.0] 열 모드 상태: 현재 활성화된 열 이름 (다음 키워드에 적용)
     let pendingColumn = null;
@@ -51,7 +83,7 @@ export function parseQuery(rawQuery) {
     for (const token of tokens) {
         // 제외 검색어 처리
         if (token.startsWith('-') && token.length > 1) {
-            pendingColumn = null; // 열 모드 해제
+            pendingColumn = null;
             excludes.push(token.slice(1));
             continue;
         }
@@ -72,14 +104,14 @@ export function parseQuery(rawQuery) {
         // [v2.3.0] 열 모드 검색 처리
         const colMatch = token.match(COLUMN_PATTERN);
         if (colMatch) {
-            pendingColumn = colMatch[1]; // 열 이름 저장 → 다음 키워드에 적용
+            pendingColumn = colMatch[1];
             continue;
         }
 
         // 열 모드가 활성화된 경우 → columnFilter로 등록
         if (pendingColumn) {
             columnFilters.push({ column: pendingColumn, keyword: token });
-            pendingColumn = null; // 사용 후 해제
+            pendingColumn = null;
             continue;
         }
 
@@ -87,5 +119,5 @@ export function parseQuery(rawQuery) {
         keywords.push(token);
     }
 
-    return { keywords, excludes, ranges, columnFilters, raw: rawQuery };
+    return { keywords, excludes, ranges, columnFilters, regexFilters, raw: rawQuery };
 }

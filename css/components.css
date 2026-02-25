@@ -525,6 +525,12 @@
     color: var(--match-range);
 }
 
+/* [v2.5.0] 정규식 매칭 배지 */
+.match-badge--regex {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
 /* 키워드 하이라이트 */
 .highlight {
     background: rgba(210, 153, 34, 0.25);

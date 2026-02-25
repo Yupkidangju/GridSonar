@@ -34,6 +34,7 @@ const translations = {
         matchFuzzy: '유사',
         matchChosung: '초성',
         matchRange: '범위',
+        matchRegex: '정규식',
         statusReady: '준비됨',
         favorites: '즐겨찾기',
         removeFile: '제거',
@@ -124,6 +125,17 @@ const translations = {
                     <div class="help-example-desc"><kbd>열:</kbd> 또는 <kbd>col:</kbd> 접두사와 열 이름을 붙여 <b>특정 열에서만</b> 키워드를 검색합니다. 열 이름은 대소문자 구분 없이 부분 일치로 적용됩니다.</div>
                 </div>
             </div>
+            <div class="help-section">
+                <div class="help-section-title">🧩 정규식 검색 (고급)</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/\\d{3}-\\d{4}/</span></div>
+                    <div class="help-example-desc">슬래시(<kbd>/</kbd>)로 감싼 <b>정규식 패턴</b>을 사용할 수 있습니다. 전화번호, 이메일 등 특정 패턴을 정밀하게 검색합니다.</div>
+                </div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/홍[가-힣]+/i</span></div>
+                    <div class="help-example-desc">플래그 <kbd>i</kbd>를 붙이면 대소문자를 무시합니다. <kbd>g</kbd>, <kbd>m</kbd> 등의 플래그도 지원됩니다.</div>
+                </div>
+            </div>
             <div class="help-tip">💡 <b>꿀팁:</b> 검색 결과 행을 더블클릭하면 <b>상세 보기</b>가 열리며 복사 버튼을 통해 전체 행 정보를 쉽게 공유할 수 있습니다.</div>
         `
     },
@@ -156,6 +168,7 @@ const translations = {
         matchFuzzy: 'Fuzzy',
         matchChosung: 'Initial',
         matchRange: 'Range',
+        matchRegex: 'Regex',
         statusReady: 'Ready',
         favorites: 'Favorites',
         removeFile: 'Remove',
@@ -239,6 +252,17 @@ const translations = {
                     <div class="help-example-desc">Use <kbd>col:</kbd> prefix followed by a column name to search a keyword <b>only in that specific column</b>. Partial matching and case-insensitivity apply.</div>
                 </div>
             </div>
+            <div class="help-section">
+                <div class="help-section-title">🧩 Regex Search (Advanced)</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/\\d{3}-\\d{4}/</span></div>
+                    <div class="help-example-desc">Wrap a <b>regular expression</b> in slashes (<kbd>/</kbd>). Precisely search for phone numbers, emails and other patterns.</div>
+                </div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/^john/i</span></div>
+                    <div class="help-example-desc">Append flag <kbd>i</kbd> for case-insensitive matching. Flags <kbd>g</kbd>, <kbd>m</kbd> etc. are also supported.</div>
+                </div>
+            </div>
             <div class="help-tip">💡 <b>Tip:</b> Double-click a row in the search results to open the <b>Detail View</b>, from which you can easily copy all information.</div>
         `
     },
@@ -271,6 +295,7 @@ const translations = {
         matchFuzzy: '類似',
         matchChosung: '初声',
         matchRange: '範囲',
+        matchRegex: '正規表現',
         statusReady: '準備完了',
         favorites: 'お気に入り',
         removeFile: '削除',
@@ -354,6 +379,17 @@ const translations = {
                     <div class="help-example-desc"><kbd>col:</kbd> 接頭辞と列名を続けることで、<b>特定の列内</b>のみでキーワードを検索します。列名は大文字小文字を区別せず、部分一致で適用されます。</div>
                 </div>
             </div>
+            <div class="help-section">
+                <div class="help-section-title">🧩 正規表現検索 (上級)</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/\\d{3}-\\d{4}/</span></div>
+                    <div class="help-example-desc">スラッシュ(<kbd>/</kbd>)で囲んだ<b>正規表現パターン</b>を使用できます。電話番号やメールなど特定のパターンを精密に検索します。</div>
+                </div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/^田中/i</span></div>
+                    <div class="help-example-desc">フラグ <kbd>i</kbd> で大文字小文字を無視します。<kbd>g</kbd>、<kbd>m</kbd> なども対応しています。</div>
+                </div>
+            </div>
             <div class="help-tip">💡 <b>ヒント：</b> 検索結果の行をダブルクリックすることで、<b>詳細表示</b>を開き、すべての情報を簡単にコピーできます。</div>
         `
     },
@@ -386,6 +422,7 @@ const translations = {
         matchFuzzy: '模糊',
         matchChosung: '聲母',
         matchRange: '範圍',
+        matchRegex: '正規表示',
         statusReady: '就緒',
         favorites: '我的最愛',
         removeFile: '移除',
@@ -469,6 +506,17 @@ const translations = {
                     <div class="help-example-desc">使用 <kbd>col:</kbd> 前綴加上欄位名稱可<b>僅在特定欄位中</b>搜尋關鍵字。欄位名稱支援不區分大小寫的部分比對。</div>
                 </div>
             </div>
+            <div class="help-section">
+                <div class="help-section-title">🧩 正規表示式搜尋 (進階)</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/\\d{3}-\\d{4}/</span></div>
+                    <div class="help-example-desc">使用斜線 (<kbd>/</kbd>) 包裹<b>正規表示式</b>。可精確搜尋電話號碼、電子郵件等特定模式。</div>
+                </div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/^張/i</span></div>
+                    <div class="help-example-desc">加上旗標 <kbd>i</kbd> 可不區分大小寫。<kbd>g</kbd>、<kbd>m</kbd> 等旗標也支援。</div>
+                </div>
+            </div>
             <div class="help-tip">💡 <b>提示：</b> 在搜尋結果中連按兩下資料列可開啟<b>詳細資料</b>，並從中輕鬆複製所有資訊。</div>
         `
     },
@@ -501,6 +549,7 @@ const translations = {
         matchFuzzy: '模糊',
         matchChosung: '声母',
         matchRange: '范围',
+        matchRegex: '正则',
         statusReady: '就绪',
         favorites: '收藏夹',
         removeFile: '移除',
@@ -582,6 +631,17 @@ const translations = {
                 <div class="help-example">
                     <div class="help-example-query"><span class="help-kbd">col:姓名</span> 张三 <span class="help-kbd">col:价格</span> 100~500</div>
                     <div class="help-example-desc">使用 <kbd>col:</kbd> 前缀加上列名称可<b>仅在特定列中</b>搜索关键词。列名称支持不区分大小写的部分匹配。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🧩 正则表达式搜索 (高级)</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/\\d{3}-\\d{4}/</span></div>
+                    <div class="help-example-desc">使用斜线 (<kbd>/</kbd>) 包裹<b>正则表达式</b>。可精确搜索电话号码、电子邮件等特定模式。</div>
+                </div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">/^张/i</span></div>
+                    <div class="help-example-desc">加上标志 <kbd>i</kbd> 可不区分大小写。<kbd>g</kbd>、<kbd>m</kbd> 等标志也支持。</div>
                 </div>
             </div>
             <div class="help-tip">💡 <b>提示：</b> 在搜索结果中双击数据行可打开<b>详细信息</b>，并从中轻松复制所有内容。</div>
