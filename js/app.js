@@ -1791,6 +1791,16 @@ function matchLabel(type) {
  */
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
+        // [v2.7.0] controllerchange → 자동 reload 복원
+        // skipWaiting + clients.claim 조합으로 새 SW가 즉시 활성화되므로,
+        // controllerchange 발생 시 페이지를 자동 새로고침하여 새 캐시 즉시 적용.
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (refreshing) return;
+            refreshing = true;
+            window.location.reload();
+        });
+
         navigator.serviceWorker.register('sw.js').then(registration => {
             logger.info('Service Worker 등록 성공');
 
@@ -1801,18 +1811,14 @@ function registerServiceWorker() {
 
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        showToast(
-                            t('newVersionAvailable') || '🔄 새로운 버전이 있습니다. 페이지를 새로고침하면 적용됩니다.',
-                            'info',
-                            15000
-                        );
+                        // skipWaiting이 호출되므로 곧바로 activating → activated 전환됨
+                        // controllerchange 핸들러에서 자동 reload 처리
+                        logger.info('새 Service Worker 설치 완료, 자동 새로고침 예정');
                     }
                 });
             });
         }).catch(err => {
             logger.warn('Service Worker 등록 실패:', err);
         });
-        // [v1.1.3] controllerchange → 강제 reload 제거
-        // skipWaiting도 sw.js에서 제거했으므로 이 이벤트는 발생하지 않음
     }
 }
