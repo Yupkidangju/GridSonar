@@ -11,7 +11,7 @@
  *   (두 스크립트는 index.html에서 로드)
  */
 
-import { getConfig, setConfig } from '../utils/config.js';
+import { getConfig, setConfig, loadConfig } from '../utils/config.js';
 import { t } from '../utils/i18n.js';
 import { logger } from '../utils/logger.js';
 
@@ -391,6 +391,28 @@ async function connectAndPickFiles(callbacks) {
         if (onStatus) onStatus('', false);
     }
 }
+
+// [v2.6.3] API 설정값 강제 초기화 (IIFE)
+// 새로고침 시 localStorage에 키가 없으면 하드코딩된 기본 키를 명시적으로 저장.
+// getConfig의 "반환만 하고 저장하지 않는" 생명주기 문제를 해결합니다.
+(function initDriveConfig() {
+    const currentConfig = loadConfig();
+    let needsSave = false;
+
+    if (!currentConfig.driveApiKey && DEFAULT_API_KEY !== 'YOUR_API_KEY_HERE') {
+        currentConfig.driveApiKey = DEFAULT_API_KEY;
+        needsSave = true;
+    }
+    if (!currentConfig.driveClientId && DEFAULT_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
+        currentConfig.driveClientId = DEFAULT_CLIENT_ID;
+        needsSave = true;
+    }
+
+    if (needsSave) {
+        saveDriveConfig(currentConfig.driveApiKey, currentConfig.driveClientId);
+        logger.info('Google Drive 기본 API 키를 localStorage에 초기화 완료');
+    }
+})();
 
 export {
     getDriveConfig,
