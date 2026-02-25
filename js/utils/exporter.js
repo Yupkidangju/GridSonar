@@ -64,33 +64,78 @@ export async function exportResults(results, format = 'xlsx', fileName = null, s
         const csvContent = xlsx.utils.sheet_to_csv(ws);
         const BOM = '\uFEFF'; // UTF-8 BOM (한글 깨짐 방지)
         const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-        downloadBlob(blob, fullName);
+        await downloadBlob(blob, fullName);
     } else {
         const wbout = xlsx.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([wbout], {
             type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         });
-        downloadBlob(blob, fullName);
+        await downloadBlob(blob, fullName);
     }
 }
 
 /**
- * Blob을 파일로 다운로드합니다.
- * @param {Blob} blob
- * @param {string} fileName
+ * [v1.2.2] Blob을 파일로 저장합니다.
+ * Chromium 브라우저: showSaveFilePicker() → OS 네이티브 "다른 이름으로 저장" 대화상자
+ * Firefox/Safari 등: 기존 <a download> 방식 (다운로드 폴더) 폴백
+ * @param {Blob} blob - 저장할 데이터
+ * @param {string} fileName - 기본 파일명 (확장자 포함)
  */
-function downloadBlob(blob, fileName) {
+async function downloadBlob(blob, fileName) {
+    // [v1.2.2] File System Access API 지원 시 Save As 다이얼로그 표시
+    if (window.showSaveFilePicker) {
+        try {
+            // 확장자에서 MIME 타입과 필터 구성
+            const ext = fileName.split('.').pop().toLowerCase();
+            const fileTypes = buildFileTypeFilter(ext);
+
+            const handle = await window.showSaveFilePicker({
+                suggestedName: fileName,
+                types: fileTypes
+            });
+
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return; // Save As 성공 시 여기서 종료
+        } catch (err) {
+            // 사용자가 다이얼로그를 취소한 경우 (AbortError)
+            if (err.name === 'AbortError') return;
+            // 그 외 예외는 폴백으로 진행
+            console.warn('[Exporter] showSaveFilePicker 실패, 폴백 사용:', err.message);
+        }
+    }
+
+    // 폴백: 기존 <a download> 방식 (다운로드 폴더)
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName;
     document.body.appendChild(a);
     a.click();
-    // 정리
     setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }, 100);
+}
+
+/**
+ * [v1.2.2] 확장자에 맞는 showSaveFilePicker용 파일 타입 필터를 구성합니다.
+ * @param {string} ext - 파일 확장자 (예: 'xlsx', 'csv')
+ * @returns {Array} - showSaveFilePicker의 types 옵션 배열
+ */
+function buildFileTypeFilter(ext) {
+    const filters = {
+        xlsx: [{
+            description: 'Excel Workbook (.xlsx)',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+        }],
+        csv: [{
+            description: 'CSV (Comma-Separated Values)',
+            accept: { 'text/csv': ['.csv'] }
+        }]
+    };
+    return filters[ext] || [];
 }
 
 /**
@@ -126,7 +171,7 @@ export async function exportFailedFiles(stateFiles) {
     const BOM = '\uFEFF';
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const finalFileName = t('failedFilesName') || 'FailedFilesList';
-    downloadBlob(blob, `${finalFileName}.csv`);
+    await downloadBlob(blob, `${finalFileName}.csv`);
 }
 
 export { downloadBlob };
