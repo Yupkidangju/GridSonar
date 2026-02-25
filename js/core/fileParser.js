@@ -41,7 +41,7 @@ async function loadPapaParse() {
 /**
  * 지원되는 파일 확장자
  */
-const SUPPORTED_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv']);
+const SUPPORTED_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv', '.pdf', '.docx']);
 
 /**
  * 파일 확장자를 추출합니다.

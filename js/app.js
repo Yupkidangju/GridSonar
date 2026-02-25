@@ -248,8 +248,8 @@ function bindEvents() {
 
 // ── 파일 처리 ──
 
-// 지원되는 확장자 (소문자)
-const SUPPORTED_EXT = new Set(['.xlsx', '.xls', '.csv']);
+// [v2.0.0] 지원되는 확장자 — PDF/DOCX 비정형 문서 포함
+const SUPPORTED_EXT = new Set(['.xlsx', '.xls', '.csv', '.pdf', '.docx']);
 
 /**
  * 파일명이 지원되는 확장자인지 확인합니다.
@@ -499,7 +499,9 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
         const id = `${fileKey}_${Date.now()}`;
 
         const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-        const fileType = ext === '.csv' ? 'csv' : ext.replace('.', '');
+        // [v2.0.0] PDF/DOCX 파일 타입 분기 추가
+        const typeMap = { '.csv': 'csv', '.xlsx': 'xlsx', '.xls': 'xls', '.pdf': 'pdf', '.docx': 'docx' };
+        const fileType = typeMap[ext] || ext.replace('.', '');
         let data;
         if (fileType === 'csv') {
             data = file;
@@ -893,8 +895,14 @@ function renderResults(results, query) {
                 tbody += `<td class="truncate">${escapeHtml(r.row.sheetName)}</td>`;
             } else {
                 const val = r.row.cells[h] || '';
-                const highlighted = highlightKeywords(val, keywords);
-                tbody += `<td class="truncate" title="${escapeHtml(val)}">${highlighted}</td>`;
+                // [v2.0.0] 긴 텍스트(200자 초과) → 키워드 주변 스니펫 표시
+                if (val.length > 200 && keywords.length > 0) {
+                    const snippet = buildSnippet(val, keywords, 80);
+                    tbody += `<td class="truncate snippet-cell" title="${escapeHtml(val.slice(0, 500))}...">${snippet}</td>`;
+                } else {
+                    const highlighted = highlightKeywords(val, keywords);
+                    tbody += `<td class="truncate" title="${escapeHtml(val)}">${highlighted}</td>`;
+                }
             }
         }
         tbody += '</tr>';
@@ -953,7 +961,9 @@ function renderFileTree() {
             info.status === 'indexing' ? '⏳' :
                 info.status === 'error' ? '❌' : '📄';
         const extIcon = displayName.endsWith('.csv') ? '📊' :
-            displayName.endsWith('.xls') ? '📗' : '📘';
+            displayName.endsWith('.xls') ? '📗' :
+                displayName.endsWith('.pdf') ? '📄' :
+                    displayName.endsWith('.docx') ? '📝' : '📘';
 
         html += `
       <li class="file-tree-item" data-file="${escapeHtml(fileKey)}">
@@ -1196,6 +1206,43 @@ function highlightKeywords(text, keywords) {
 
 function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * [v2.0.0] 긴 텍스트에서 키워드 주변 스니펫을 생성합니다.
+ * PDF/DOCX 문서 검색 결과에서 핵심 문맥만 추출하여 표시합니다.
+ * @param {string} text - 원본 텍스트
+ * @param {string[]} keywords - 검색 키워드 배열
+ * @param {number} contextLen - 키워드 앞뒤 문맥 길이
+ * @returns {string} - 하이라이트된 HTML 스니펫
+ */
+function buildSnippet(text, keywords, contextLen = 80) {
+    const lower = text.toLowerCase();
+    let bestIdx = -1;
+
+    // 첫 번째로 매칭되는 키워드 위치 찾기
+    for (const kw of keywords) {
+        if (!kw) continue;
+        const idx = lower.indexOf(kw.toLowerCase());
+        if (idx !== -1 && (bestIdx === -1 || idx < bestIdx)) {
+            bestIdx = idx;
+        }
+    }
+
+    if (bestIdx === -1) {
+        // 키워드를 찾지 못리면 앞에서 자른 텍스트 표시
+        const preview = text.slice(0, contextLen * 2);
+        return escapeHtml(preview) + (text.length > contextLen * 2 ? '...' : '');
+    }
+
+    const start = Math.max(0, bestIdx - contextLen);
+    const end = Math.min(text.length, bestIdx + contextLen * 2);
+    const slice = text.slice(start, end);
+
+    const prefix = start > 0 ? '...' : '';
+    const suffix = end < text.length ? '...' : '';
+
+    return prefix + highlightKeywords(slice, keywords) + suffix;
 }
 
 function matchLabel(type) {
