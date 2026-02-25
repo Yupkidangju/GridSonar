@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko" data-theme="dark">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +11,8 @@
   <title>GridSonar — Smart Data Search</title>
 
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
 
   <!-- CSS -->
   <link rel="stylesheet" href="css/variables.css">
@@ -21,6 +23,7 @@
   <!-- App -->
   <script type="module" src="js/app.js"></script>
 </head>
+
 <body>
   <div id="app">
     <!-- ────── 헤더 ────── -->
@@ -30,10 +33,13 @@
         <span class="app-logo-text">GridSonar</span>
       </div>
       <div class="header-actions">
-        <button id="btn-clear-cache" class="btn btn--ghost btn--sm" title="캐시 초기화">
-          🗑️ <span class="btn-label">캐시</span>
+        <!-- [v1.2.1] 다국어 언어 선택 -->
+        <select id="lang-select" class="lang-select" title="Language"
+          style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:var(--text-sm); margin-right:8px;"></select>
+        <button id="btn-clear-cache" class="btn btn--ghost btn--sm" data-i18n-title="clearCacheTitle">
+          🗑️ <span class="btn-label" data-i18n="clearCacheBtn">Flush</span>
         </button>
-        <button id="btn-theme" class="btn btn--icon btn--ghost" title="테마 전환">☀️</button>
+        <button id="btn-theme" class="btn btn--icon btn--ghost" data-i18n-title="themeToggleTitle">☀️</button>
       </div>
     </header>
 
@@ -42,15 +48,19 @@
       <!-- 사이드바: 파일 트리 -->
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-          <span class="sidebar-title">📁 파일</span>
-          <button id="btn-add-files" class="btn btn--ghost btn--sm" title="파일 추가">＋</button>
+          <span class="sidebar-title" data-i18n="filesTitle">📁 파일</span>
+          <div style="display:inline-flex; gap:4px; align-items:center;">
+            <button id="btn-export-errors-sidebar" class="btn btn--ghost btn--sm" data-i18n-title="exportErrorsTitle"
+              style="display:none; color:var(--danger)">⚠️</button>
+            <button id="btn-add-files" class="btn btn--ghost btn--sm" data-i18n-title="addFilesTitle">＋</button>
+          </div>
         </div>
         <div class="sidebar-content" id="sidebar-content">
           <!-- 드롭존 -->
           <div class="dropzone" id="dropzone">
             <div class="dropzone-icon">📂</div>
-            <div class="dropzone-text">파일을 여기에 끌어다 놓으세요</div>
-            <div class="dropzone-formats">.xlsx · .xls · .csv</div>
+            <div class="dropzone-text" data-i18n="dropFilesText">파일을 여기에 끌어다 놓으세요</div>
+            <div class="dropzone-formats" data-i18n="supportedFormats">.xlsx · .xls · .csv</div>
           </div>
           <!-- 파일 목록 -->
           <ul class="file-tree" id="file-tree" style="display:none;"></ul>
@@ -66,14 +76,8 @@
         <div class="search-area">
           <div class="search-container">
             <div class="search-input-wrapper">
-              <input
-                type="text"
-                id="search-input"
-                class="search-input"
-                placeholder="검색어를 입력하세요... (초성 검색: ㅎㄱㄷ, 제외: -키워드, 범위: 100~500)"
-                autocomplete="off"
-                spellcheck="false"
-              >
+              <input type="text" id="search-input" class="search-input" data-i18n-placeholder="searchPlaceholder"
+                placeholder="검색어를 입력하세요... (초성 검색: ㅎㄱㄷ, 제외: -키워드, 범위: 100~500)" autocomplete="off" spellcheck="false">
               <span class="search-icon">🔍</span>
               <div class="search-stats" id="search-stats">
                 <!-- 동적으로 채워짐 -->
@@ -90,19 +94,26 @@
           <div class="results-toolbar" id="results-toolbar" style="display:none;">
             <div class="results-info">
               <span id="results-count" class="results-count">0</span>
-              <span>건</span>
+              <span data-i18n="resultsUnit">건</span>
               <span id="results-time" class="results-time"></span>
             </div>
             <div class="results-actions">
-              <input type="text" id="filter-input" class="input filter-input" placeholder="결과 내 필터링...">
+              <input type="text" id="filter-input" class="input filter-input" data-i18n-placeholder="filterPlaceholder"
+                placeholder="결과 내 필터링...">
               <div class="similarity-control">
-                <span>유사도</span>
+                <span data-i18n="similarityLabel">유사도</span>
                 <input type="range" id="sim-slider" class="similarity-slider" min="30" max="100" value="60">
                 <span id="sim-value">60%</span>
               </div>
-              <button id="btn-copy" class="btn btn--sm" title="클립보드 복사">📋 복사</button>
-              <button id="btn-export-xlsx" class="btn btn--sm" title="Excel 내보내기">📤 XLSX</button>
-              <button id="btn-export-csv" class="btn btn--sm" title="CSV 내보내기">📄 CSV</button>
+              <button id="btn-export-errors" class="btn btn--sm" data-i18n-title="exportErrorsTitle"
+                style="display:none; border-color:var(--danger); color:var(--danger)"><span
+                  data-i18n="exportErrorsBtn">⚠️ 실패 추출</span></button>
+              <button id="btn-copy" class="btn btn--sm" data-i18n-title="copyTitle"><span data-i18n="copyBtn">📋
+                  복사</span></button>
+              <button id="btn-export-xlsx" class="btn btn--sm" data-i18n-title="exportXlsxTitle"><span
+                  data-i18n="exportXlsxBtn">📤 XLSX</span></button>
+              <button id="btn-export-csv" class="btn btn--sm" data-i18n-title="exportCsvTitle"><span
+                  data-i18n="exportCsvBtn">📄 CSV</span></button>
             </div>
           </div>
 
@@ -117,8 +128,8 @@
           <!-- 빈 상태 -->
           <div class="empty-state" id="empty-state">
             <div class="empty-state-icon">◎</div>
-            <div class="empty-state-title">GridSonar</div>
-            <div class="empty-state-text">
+            <div class="empty-state-title" data-i18n="emptyStateTitle">GridSonar</div>
+            <div class="empty-state-text" id="empty-state-text">
               좌측에 Excel/CSV 파일을 드래그 앤 드롭하고,<br>
               검색어를 입력하면 모든 파일에서 즉시 데이터를 찾아줍니다.<br><br>
               <strong>초성 검색:</strong> ㅎㄱㄷ → 홍길동<br>
@@ -133,7 +144,7 @@
     <!-- ────── 상태바 ────── -->
     <footer class="app-statusbar">
       <div class="statusbar-left">
-        <span id="status-text">준비됨</span>
+        <span id="status-text" data-i18n="statusReady">준비됨</span>
         <div class="progress-bar" id="progress-bar" style="display:none; width:150px;">
           <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
         </div>
@@ -150,7 +161,7 @@
     <div class="modal-overlay" id="detail-modal" style="display:none;">
       <div class="modal">
         <div class="modal-header">
-          <span class="modal-title" id="modal-title">상세 보기</span>
+          <span class="modal-title" id="modal-title" data-i18n="detailModalTitle">상세 보기</span>
           <button class="btn btn--ghost btn--icon" id="modal-close">✕</button>
         </div>
         <div class="modal-body" id="modal-body"></div>
@@ -161,4 +172,5 @@
     <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none;">
   </div>
 </body>
+
 </html>

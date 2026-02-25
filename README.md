@@ -47,6 +47,7 @@
 - **IndexedDB Cache:** Instant restore on restart without reloading Excel files
 - **Themes:** Windows 11 Fluent-style dark/light mode
 - **Export:** Export search results to .xlsx/.csv
+- **Multilingual UI:** English, Korean, Japanese, Chinese (Traditional/Simplified)
 
 ---
 
@@ -61,6 +62,7 @@
 - **大容量ファイル処理:** Web Worker + ストリーミングパースでUIフリーズなし
 - **4階層検索エンジン:** 完全一致、初声検索、ファジーマッチ、BM25ランキング
 - **オフラインPWA:** Service Workerでインストール後、インターネット不要
+- **多言語対応UI:** 日本語、韓国語、英語、中国語（繁/簡）
 
 ---
 
@@ -75,6 +77,7 @@
 - **大檔案處理：** Web Worker + 串流解析，無 UI 凍結
 - **4層搜尋引擎：** 精確匹配、首音搜尋、模糊匹配、BM25 排名
 - **離線 PWA：** 透過 Service Worker 安裝後可離線使用
+- **多語言 UI：** 繁體中文、簡體中文、英文、韓文、日文
 
 ---
 
@@ -89,6 +92,7 @@
 - **大文件处理：** Web Worker + 流式解析，无 UI 冻结
 - **4层搜索引擎：** 精确匹配、首音搜索、模糊匹配、BM25 排名
 - **离线 PWA：** 通过 Service Worker 安装后可离线使用
+- **多语言 UI：** 简体中文、繁体中文、英文、韩文、日文
 
 ---
 

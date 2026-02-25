@@ -13,9 +13,9 @@ import { search } from './core/searchEngine.js';
 // [v1.1.2] fileParser는 폴백에서 동적 import — Worker 우선 사용
 import * as cache from './core/cacheManager.js';
 import { getConfig, setConfig } from './utils/config.js';
-import { exportResults } from './utils/exporter.js';
+import { exportResults, exportFailedFiles } from './utils/exporter.js';
 import { copyResultsToClipboard } from './utils/clipboard.js';
-import { t } from './utils/i18n.js';
+import { t, getAvailableLanguages, getLanguage, setLanguage, translatePage } from './utils/i18n.js';
 import { logger } from './utils/logger.js';
 
 // ── 전역 상태 ──
@@ -80,6 +80,9 @@ function cacheDomRefs() {
     dom.btnCopy = $('btn-copy');
     dom.btnExportXlsx = $('btn-export-xlsx');
     dom.btnExportCsv = $('btn-export-csv');
+    dom.langSelect = $('lang-select');
+    dom.btnExportErrors = $('btn-export-errors');
+    dom.btnExportErrorsSidebar = $('btn-export-errors-sidebar');
 }
 
 function loadSettings() {
@@ -90,6 +93,20 @@ function loadSettings() {
 
     // 최근 검색어
     state.recentKeywords = getConfig('recentKeywords', []);
+
+    // [v1.2.1] 다국어 셀렉트 박스 설정
+    const langs = getAvailableLanguages();
+    const currentLang = getLanguage();
+    langs.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.label;
+        if (l.code === currentLang) opt.selected = true;
+        dom.langSelect.appendChild(opt);
+    });
+
+    // 시작 시 HTML 요소 번역 적용
+    translatePage();
 }
 
 // ── 이벤트 바인딩 ──
@@ -160,11 +177,23 @@ function bindEvents() {
     // 테마
     dom.btnTheme.addEventListener('click', toggleTheme);
 
+    // 언어 전환
+    dom.langSelect.addEventListener('change', (e) => {
+        setLanguage(e.target.value);
+        translatePage();
+        updateStats(); // 동적 텍스트 갱신
+        renderFileTree(); // 동적 텍스트 갱신
+        if (state.results && state.results.length > 0) {
+            renderResults(state.results, state.currentQuery);
+        }
+        showToast(t('statusReady'), 'success');
+    });
+
     // 캐시 초기화
     dom.btnClearCache.addEventListener('click', async () => {
         // [v1.1.9 Fix] 캐시 제거 후 실제 리로드
         // DB만 지우고 UI는 남으면 메모리/상태와 DB가 다른 유령 상태 발생
-        if (confirm('케시를 모두 지우고 앱을 초기화하시겠습니까?')) {
+        if (confirm(t('confirmClearCache'))) {
             await cache.clearAllCache();
             window.location.reload();
         }
@@ -174,20 +203,27 @@ function bindEvents() {
     dom.btnCopy.addEventListener('click', async () => {
         const targets = state.filteredResults.length > 0 ? state.filteredResults : state.results;
         const ok = await copyResultsToClipboard(targets);
-        showToast(ok ? `📋 ${targets.length}건 복사 완료` : '⚠️ 복사 실패', ok ? 'success' : 'error');
+        showToast(ok ? `📋 ${targets.length}${t('resultsUnit')} ${t('copySuccess')}` : `⚠️ ${t('copyFail')}`, ok ? 'success' : 'error');
     });
 
     dom.btnExportXlsx.addEventListener('click', () => {
         const targets = state.filteredResults.length > 0 ? state.filteredResults : state.results;
-        exportResults(targets, 'xlsx');
-        showToast(`📤 ${targets.length}건 XLSX 내보내기`, 'success');
+        exportResults(targets, 'xlsx', null, state.files);
+        showToast(`📤 ${targets.length}${t('resultsUnit')} ${t('exportSuccess')} (XLSX)`, 'success');
     });
 
     dom.btnExportCsv.addEventListener('click', () => {
         const targets = state.filteredResults.length > 0 ? state.filteredResults : state.results;
-        exportResults(targets, 'csv');
-        showToast(`📄 ${targets.length}건 CSV 내보내기`, 'success');
+        exportResults(targets, 'csv', null, state.files);
+        showToast(`📄 ${targets.length}${t('resultsUnit')} ${t('exportSuccess')} (CSV)`, 'success');
     });
+
+    const exportErrorsHandler = () => {
+        exportFailedFiles(state.files);
+        showToast(`⚠️ ${t('exportSuccess')}`, 'success');
+    };
+    if (dom.btnExportErrors) dom.btnExportErrors.addEventListener('click', exportErrorsHandler);
+    if (dom.btnExportErrorsSidebar) dom.btnExportErrorsSidebar.addEventListener('click', exportErrorsHandler);
 
     // 결과 내 필터링
     dom.filterInput.addEventListener('input', () => applyResultFilter());
@@ -259,7 +295,7 @@ async function handleDrop(dataTransfer) {
 
         // Entry가 있으면 폴더 재귀 탐색
         if (entries.length > 0) {
-            setStatus('폴더 탐색 중...', true);
+            setStatus(t('loadingFolder') || '폴더 탐색 중...', true);
             for (const entry of entries) {
                 const result = await collectFilesFromEntry(entry);
                 collectedFiles.push(...result.files);
@@ -280,14 +316,16 @@ async function handleDrop(dataTransfer) {
     // 결과 보고 및 처리
     if (collectedFiles.length === 0) {
         const msg = skippedCount > 0
-            ? `⚠️ ${skippedCount}개 파일이 지원되지 않는 형식입니다 (.xlsx, .xls, .csv만 가능)`
-            : '⚠️ 지원되지 않는 파일 형식입니다 (.xlsx, .xls, .csv만 가능)';
+            ? (t('errUnsupportedFormatCount') || '').replace('{count}', skippedCount) || `⚠️ ${skippedCount}개 파일이 지원되지 않는 형식입니다 (.xlsx, .xls, .csv만 가능)`
+            : t('errUnsupportedFormat') || '⚠️ 지원되지 않는 파일 형식입니다 (.xlsx, .xls, .csv만 가능)';
         showToast(msg, 'warning');
         return;
     }
 
     if (skippedCount > 0) {
-        showToast(`ℹ️ ${skippedCount}개 비지원 파일 제외, ${collectedFiles.length}개 파일 로드`, 'info');
+        let infoStr = t('infoSkippedFiles') || `ℹ️ {skipped}개 비지원 파일 제외, {loaded}개 파일 로드`;
+        infoStr = infoStr.replace('{skipped}', skippedCount).replace('{loaded}', collectedFiles.length);
+        showToast(infoStr, 'info');
     }
 
     await handleFileDrop(collectedFiles);
@@ -308,6 +346,7 @@ async function collectFilesFromEntry(entry) {
             entry.file(resolve, reject);
         });
         if (isSupportedExt(file.name)) {
+            file.customPath = entry.fullPath;
             files.push(file);
         } else {
             skipped++;
@@ -373,24 +412,26 @@ async function handleFileDrop(files) {
             file,
             fileKey,
             displayName: file.name,
+            path: file.customPath || file.webkitRelativePath || file.name,
             status: 'pending',
             sheets: [],
             totalRows: 0,
-            worker: null
+            worker: null,
+            errorReason: null
         });
         renderFileTree();
         await indexFile(file, fileKey, isBatch);
     }
 
     if (isBatch) {
-        setStatus('BM25 인덱스 구축 중...', true, 95);
+        setStatus(t('loadingBM25') || 'BM25 인덱스 구축 중...', true, 95);
         await new Promise(resolve => setTimeout(() => {
             state.index.buildBM25();
             resolve();
         }, 0));
         await updateFuseInstance();
         updateStats();
-        setStatus(`✅ 전체 인덱싱 완료 (${state.index.totalFiles}파일, ${state.index.totalRows.toLocaleString()}행)`, false);
+        setStatus(`${t('indexingComplete')} (${state.index.totalFiles}${t('files')}, ${state.index.totalRows.toLocaleString()}${t('rows')})`, false);
     }
     state.indexingJobs--;
 }
@@ -406,7 +447,7 @@ async function indexFile(file, fileKey, isBatch = false) {
     fileInfo.status = 'indexing';
     renderFileTree();
 
-    setStatus(`인덱싱 중: ${file.name}`, true);
+    setStatus(`${t('indexing')}: ${file.name}`, true);
 
     // [v1.1.8] 캐시 확인 — 스트리밍 복원 (OOM 방지)
     const cached = await cache.isFileCached(file.name, file.lastModified, file.size);
@@ -426,8 +467,8 @@ async function indexFile(file, fileKey, isBatch = false) {
             fileInfo.totalRows = totalCells || restored.totalCells || 0;
             renderFileTree();
             updateStats();
-            setStatus(`✅ 캐시에서 복원: ${file.name}`, false);
-            showToast(`⚡ ${file.name} 캐시에서 복원`, 'success');
+            setStatus(`✅ ${t('cachedRestore')}: ${file.name}`, false);
+            showToast(`⚡ ${file.name} ${t('cachedRestore')}`, 'success');
             return;
         }
     }
@@ -534,6 +575,7 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
                             break;
                         case 'error':
                             fileInfo.status = 'error';
+                            fileInfo.errorReason = msg.message;
                             fileInfo.worker = null;
                             // [v1.1.8 Fix] 논리적 에러 시에도 롤백 (반쪽짜리 데이터 제거)
                             state.index.removeFile(fileKey);
@@ -562,7 +604,7 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
         });
 
         if (!isBatch) {
-            setStatus('BM25 인덱스 구축 중...', true, 95);
+            setStatus(t('loadingBM25') || 'BM25 인덱스 구축 중...', true, 95);
             await new Promise(resolve => setTimeout(() => {
                 state.index.buildBM25();
                 resolve();
@@ -751,19 +793,19 @@ function performSearch() {
     // _bm25Dirty=true 상태에서 검색하면 buildBM25()가 동기 실행되어
     // Worker로 격리한 UI 비블로킹이 무력화됨
     if (state.isIndexing) {
-        showToast('⏳ 데이터를 인덱싱 중입니다. 잠시만 기다려주세요.', 'warning');
+        showToast(t('loadingIndexing'), 'warning');
         return;
     }
 
     if (state.index.totalCells === 0) {
-        showToast('📂 먼저 파일을 추가하고 인덱싱을 완료해 주세요', 'warning');
+        showToast(`📂 ${t('addFilesFirst')}`, 'warning');
         return;
     }
 
     state.currentQuery = query;
     const minSim = parseInt(dom.simSlider.value) / 100;
 
-    setStatus(`검색 중: '${query}'...`, true);
+    setStatus(`${t('searching')}: '${query}'...`, true);
     const start = performance.now();
 
     // 비동기 검색 처리 (UI 블로킹 방지)
@@ -784,15 +826,15 @@ function performSearch() {
             dom.resultsCount.textContent = state.results.length;
             dom.resultsTime.textContent = `(${elapsed}초)`;
 
-            setStatus(`검색 완료: ${state.results.length}건 (${elapsed}초)`, false);
+            setStatus(`${t('searchComplete')}: ${state.results.length}${t('resultsUnit')} (${elapsed}${t('seconds')})`, false);
 
             // 최근 검색어 저장
             addRecentKeyword(query);
 
         } catch (err) {
             logger.error('검색 오류:', err);
-            showToast(`⚠️ 검색 오류: ${err.message}`, 'error');
-            setStatus('검색 오류', false);
+            showToast(`⚠️ ${t('searchError')}: ${err.message}`, 'error');
+            setStatus(t('searchError'), false);
         }
     });
 }
@@ -803,9 +845,9 @@ function renderResults(results, query) {
         dom.resultsToolbar.style.display = 'none';
         dom.resultsTableContainer.style.display = 'none';
         dom.emptyState.style.display = 'flex';
-        dom.emptyState.querySelector('.empty-state-title').textContent = '검색 결과 없음';
+        dom.emptyState.querySelector('.empty-state-title').textContent = t('noResults');
         dom.emptyState.querySelector('.empty-state-text').textContent =
-            `'${query}'에 대한 결과를 찾을 수 없습니다.\n다른 검색어를 시도해 보세요.`;
+            `'${query}'${t('emptyStateTextQuery')}`;
         return;
     }
 
@@ -815,9 +857,9 @@ function renderResults(results, query) {
 
     // 헤더 생성
     const allHeaders = new Set();
-    allHeaders.add('_매칭');
-    allHeaders.add('_파일');
-    allHeaders.add('_시트');
+    allHeaders.add(t('metaMatch'));
+    allHeaders.add(t('metaFile'));
+    allHeaders.add(t('metaSheet'));
     for (const r of results) {
         for (const h of r.row.headers) allHeaders.add(h);
     }
@@ -972,7 +1014,7 @@ function removeFile(fileKey) {
     updateStats();
     // [v1.1.5 Fix] Fuse.js 사전 갱신 — 삭제된 파일의 어휘가 퍼지 검색에 좀비로 남지 않도록
     updateFuseInstance();
-    showToast(`🗑️ ${fileInfo.displayName} 제거됨`, 'info');
+    showToast(`🗑️ ${fileInfo.displayName} ${t('removeFile')}`, 'info');
 }
 
 // ── 상세 보기 모달 ──
@@ -989,7 +1031,7 @@ function openDetailModal(result) {
     // 매칭 정보
     if (result.matches && result.matches.length > 0) {
         html += '<div style="margin-top:var(--space-lg);">';
-        html += '<h4 style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--space-sm);">매칭 상세</h4>';
+        html += `<h4 style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--space-sm);">${t('matchDetail') || '매칭 상세'}</h4>`;
         for (const m of result.matches) {
             const badgeClass = `match-badge--${m.matchType}`;
             const label = matchLabel(m.matchType);
@@ -1104,7 +1146,19 @@ function updateStats() {
     <span class="search-stats-badge">📁 ${files}</span>
     <span class="search-stats-badge">📋 ${rows.toLocaleString()}</span>
   `;
-    dom.statusStats.textContent = `${files}파일 · ${rows.toLocaleString()}행 · ${cells.toLocaleString()}셀`;
+    dom.statusStats.textContent = `${files}${t('files')} · ${rows.toLocaleString()}${t('rows')} · ${cells.toLocaleString()}${t('cells')}`;
+
+    // [v1.2.1] 에러 파일이 있을 경우 추출 버튼 표시
+    let errorCount = 0;
+    for (const info of state.files.values()) {
+        if (info.status === 'error') errorCount++;
+    }
+    const hasErrors = errorCount > 0;
+    if (dom.btnExportErrors) dom.btnExportErrors.style.display = hasErrors ? 'inline-flex' : 'none';
+    if (dom.btnExportErrorsSidebar) {
+        dom.btnExportErrorsSidebar.style.display = hasErrors ? 'inline-flex' : 'none';
+        dom.btnExportErrorsSidebar.textContent = `⚠️ N/A`.replace('N/A', errorCount);
+    }
 }
 
 // ── 토스트 ──
@@ -1145,7 +1199,9 @@ function escapeRegex(str) {
 }
 
 function matchLabel(type) {
-    return { exact: '정확', fuzzy: '유사', chosung: '초성', range: '범위' }[type] || type;
+    const key = 'match' + type.charAt(0).toUpperCase() + type.slice(1);
+    const val = t(key);
+    return val !== key ? val : type;
 }
 
 // ── PWA 서비스 워커 ──
@@ -1169,7 +1225,7 @@ function registerServiceWorker() {
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                         showToast(
-                            '🔄 새로운 버전이 있습니다. 페이지를 새로고침하면 적용됩니다.',
+                            t('newVersionAvailable') || '🔄 새로운 버전이 있습니다. 페이지를 새로고침하면 적용됩니다.',
                             'info',
                             15000
                         );
