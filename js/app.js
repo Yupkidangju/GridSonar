@@ -577,15 +577,18 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
                             break;
                         case 'error':
                             fileInfo.status = 'error';
-                            fileInfo.errorReason = msg.message;
+                            fileInfo.errorReason = detectPasswordError(msg.message)
+                                ? (t('errPasswordProtected') || '암호 보호된 파일')
+                                : msg.message;
                             fileInfo.worker = null;
                             // [v1.1.8 Fix] 논리적 에러 시에도 롤백 (반쪽짜리 데이터 제거)
                             state.index.removeFile(fileKey);
                             renderFileTree();
-                            showToast(`⚠️ ${msg.message}`, 'error');
-                            logger.error(msg.message);
+                            updateStats(); // [v2.0.0 Fix] 에러 파일 버튼 토글
+                            showToast(`⚠️ ${fileInfo.errorReason}`, 'error');
+                            logger.error(fileInfo.errorReason);
                             worker.terminate();
-                            reject(new Error(msg.message));
+                            reject(new Error(fileInfo.errorReason));
                             break;
                     }
                 }).catch(err => {
@@ -596,6 +599,7 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
 
             worker.onerror = (err) => {
                 logger.warn('Worker 실패, 폴백 모드:', err.message);
+                fileInfo.errorReason = err.message;
                 fileInfo.worker = null;
                 worker.terminate();
                 // [v1.1.7 Fix] 롬백: 반쪽짜리 데이터 제거 후 폴백 실행
@@ -634,7 +638,9 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
     } catch (err) {
         if (fileInfo.status !== 'error') {
             fileInfo.status = 'error';
+            fileInfo.errorReason = fileInfo.errorReason || err.message;
             renderFileTree();
+            updateStats(); // [v2.0.0 Fix] 에러 파일 버튼 토글
             showToast(`⚠️ 인덱싱 실패: ${file.name}`, 'error');
         }
         fileInfo.worker = null;
@@ -1243,6 +1249,27 @@ function buildSnippet(text, keywords, contextLen = 80) {
     const suffix = end < text.length ? '...' : '';
 
     return prefix + highlightKeywords(slice, keywords) + suffix;
+}
+
+/**
+ * [v2.0.0] 에러 메시지에서 암호 보호 파일 여부를 감지합니다.
+ * PDF(pdf.js PasswordException), Excel(SheetJS encrypted), DOCX(mammoth) 등
+ * 주요 라이브러리의 암호 관련 에러 패턴을 포괄적으로 커버합니다.
+ * @param {string} message - 에러 메시지
+ * @returns {boolean} 암호 보호 에러인지 여부
+ */
+function detectPasswordError(message) {
+    if (!message) return false;
+    const lower = message.toLowerCase();
+    const patterns = [
+        'password',          // pdf.js PasswordException
+        'encrypted',         // SheetJS "File is password-protected/encrypted"
+        'password-protected',// 일반적 표현
+        'need a password',   // pdf.js 구체적 메시지
+        'incorrect password',// pdf.js 잘못된 비밀번호
+        'decryption',        // 복호화 실패
+    ];
+    return patterns.some(p => lower.includes(p));
 }
 
 function matchLabel(type) {
