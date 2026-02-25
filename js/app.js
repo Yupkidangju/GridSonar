@@ -145,15 +145,36 @@ function bindEvents() {
     dom.searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            // [v2.9.0] 자동완성 항목이 선택된 경우 해당 값으로 채움
+            const focused = dom.searchHistory.querySelector('.search-history-item.ac-focused');
+            if (focused) {
+                dom.searchInput.value = focused.dataset.keyword;
+                hideSearchHistory();
+                performSearch();
+                return;
+            }
             performSearch();
         }
-        // [v2.8.0] ↑↓ 방향키: 결과 행 탐색
+        // [v2.8.0] ↑↓ 방향키: 드롭다운이 표시 중이면 항목 탐색, 아니면 결과 행 탐색
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
-            navigateResults(e.key === 'ArrowDown' ? 1 : -1);
+            if (dom.searchHistory.classList.contains('visible')) {
+                navigateAutoComplete(e.key === 'ArrowDown' ? 1 : -1);
+            } else {
+                navigateResults(e.key === 'ArrowDown' ? 1 : -1);
+            }
+        }
+        // [v2.9.0] Tab: 첫 번째 제안으로 채움
+        if (e.key === 'Tab') {
+            const first = dom.searchHistory.querySelector('.search-history-item');
+            if (first && dom.searchHistory.classList.contains('visible')) {
+                e.preventDefault();
+                dom.searchInput.value = first.dataset.keyword;
+                hideSearchHistory();
+            }
         }
     });
-    dom.searchInput.addEventListener('focus', () => showSearchHistory());
+    dom.searchInput.addEventListener('focus', () => showAutoComplete(dom.searchInput.value));
 
     // [v2.8.0] 전역 키보드 단축키
     // Ctrl+K : 검색창 포커스 (macOS는 Cmd+K)
@@ -182,15 +203,13 @@ function bindEvents() {
     });
 
     // [v1.1.5] 디바운스 300ms 실시간 검색 (구글 스타일 UX)
+    // [v2.9.0] 자동완성 드롭다운 연동
     let searchDebounceTimer = null;
     dom.searchInput.addEventListener('input', () => {
-        const val = dom.searchInput.value.trim();
-        if (!val) {
-            showSearchHistory();
-            return;
-        }
-        hideSearchHistory();
-        // 300ms 후 자동 검색 트리거
+        const val = dom.searchInput.value;
+        showAutoComplete(val);
+        // 검색 디바운스
+        if (!val.trim()) return;
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => {
             if (dom.searchInput.value.trim()) {
@@ -1754,27 +1773,102 @@ function closeDetailModal() {
     dom.detailModal.style.display = 'none';
 }
 
-// ── 검색 기록 ──
-function showSearchHistory() {
-    if (state.recentKeywords.length === 0) return;
+// ── 검색 자동완성 ──
 
+/**
+ * [v2.9.0] 검색창 입력에 따라 자동완성 드롭다운을 표시합니다.
+ * - 빈 입력: 최근 검색어 전체
+ * - 타이핑 중: 매칭 최근 검색어 + 로드된 열 이름 col: 제안
+ * @param {string} rawVal - 검색창 현재 값 (trim 미적용)
+ */
+function showAutoComplete(rawVal) {
+    const val = rawVal.trim().toLowerCase();
+    const items = [];
+
+    if (!val) {
+        // 빈 입력: 최근 검색어만 표시
+        for (const kw of state.recentKeywords) {
+            items.push({ icon: '🕐', label: kw, keyword: kw, type: 'history' });
+        }
+    } else {
+        // 최근 검색어 필터링
+        for (const kw of state.recentKeywords) {
+            if (kw.toLowerCase().includes(val)) {
+                items.push({ icon: '🕐', label: kw, keyword: kw, type: 'history' });
+            }
+        }
+        // 현재 로드된 파일의 열 이름 수집 (중복 제거)
+        const colSet = new Set();
+        for (const [, info] of state.files) {
+            if (info.headers) {
+                for (const [sheetName, headers] of Object.entries(info.headers)) {
+                    for (const h of headers) {
+                        // 입력값이 col: 형식이면 열 이름만 비교, 아니면 전체 비교
+                        const colQuery = val.startsWith('col:') ? val.slice(4) : val;
+                        if (h.toLowerCase().includes(colQuery) && !colSet.has(h)) {
+                            colSet.add(h);
+                        }
+                    }
+                }
+            }
+        }
+        // 열 이름 제안 (col:NAME 형식)
+        for (const col of [...colSet].slice(0, 8)) {
+            // 이미 col: 입력 중이면 바로 col:NAME, 아니면 col:NAME 제안
+            const keyword = `col:${col}`;
+            items.push({ icon: '📋', label: `col:${col}`, keyword, type: 'column', sub: '열 검색' });
+        }
+    }
+
+    if (items.length === 0) {
+        hideSearchHistory();
+        return;
+    }
+
+    // 섹션 구분 (history → column 전환 지점)
     let html = '';
-    for (const kw of state.recentKeywords) {
-        html += `<div class="search-history-item" data-keyword="${escapeHtml(kw)}">
-      <span class="history-icon">🕐</span>
-      <span>${escapeHtml(kw)}</span>
-    </div>`;
+    let lastType = null;
+    for (const item of items) {
+        if (lastType && lastType !== item.type) {
+            html += '<div class="ac-divider"></div>';
+        }
+        lastType = item.type;
+        const subHtml = item.sub ? `<span class="ac-sub">${escapeHtml(item.sub)}</span>` : '';
+        html += `<div class="search-history-item" data-keyword="${escapeHtml(item.keyword)}" data-type="${item.type}">
+            <span class="history-icon">${item.icon}</span>
+            <span class="ac-label">${escapeHtml(item.label)}</span>
+            ${subHtml}
+        </div>`;
     }
     dom.searchHistory.innerHTML = html;
     dom.searchHistory.classList.add('visible');
 
-    dom.searchHistory.querySelectorAll('.search-history-item').forEach(item => {
-        item.addEventListener('click', () => {
-            dom.searchInput.value = item.dataset.keyword;
+    dom.searchHistory.querySelectorAll('.search-history-item').forEach(el => {
+        el.addEventListener('click', () => {
+            dom.searchInput.value = el.dataset.keyword;
             hideSearchHistory();
             performSearch();
         });
     });
+}
+
+/**
+ * [v2.9.0] ↑↓ 키로 자동완성 드롭다운 항목을 탐색합니다.
+ * @param {number} delta - 이동 방향 (+1: 아래, -1: 위)
+ */
+function navigateAutoComplete(delta) {
+    const items = [...dom.searchHistory.querySelectorAll('.search-history-item')];
+    if (items.length === 0) return;
+    const cur = dom.searchHistory.querySelector('.ac-focused');
+    let idx = cur ? items.indexOf(cur) : -1;
+    items.forEach(el => el.classList.remove('ac-focused'));
+    idx = Math.max(0, Math.min(items.length - 1, idx + delta));
+    items[idx].classList.add('ac-focused');
+    items[idx].scrollIntoView({ block: 'nearest' });
+}
+
+function showSearchHistory() {
+    showAutoComplete(dom.searchInput ? dom.searchInput.value : '');
 }
 
 function hideSearchHistory() {

@@ -301,6 +301,39 @@
     font-size: var(--text-xs);
 }
 
+/* [v2.9.0] 자동완성 전용 스타일 */
+.search-history-item.ac-focused {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+    outline: 1px solid rgba(124, 107, 255, 0.4);
+    outline-offset: -1px;
+}
+
+.ac-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ac-sub {
+    font-size: 0.72em;
+    color: var(--text-tertiary);
+    background: rgba(124, 107, 255, 0.15);
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* 자동완성 섹션 구분선 */
+.ac-divider {
+    height: 1px;
+    background: var(--border-primary);
+    margin: 4px 12px;
+}
+
 /* ── 드롭존 ── */
 .dropzone {
     border: 2px dashed var(--border-primary);
