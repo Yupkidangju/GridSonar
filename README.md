@@ -117,7 +117,7 @@
 ---
 
 ## 📄 License
-MIT License
+Apache License 2.0 — See [LICENSE](LICENSE) for details.
 
 ## 🔗 Origin
 Ported from [Data Scavenger v2.0.0](https://github.com/) (Python/PySide6/Pandas) to Web Native PWA.
