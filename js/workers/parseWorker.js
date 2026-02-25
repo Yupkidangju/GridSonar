@@ -39,13 +39,14 @@ async function loadPapaParse() {
     return Papa;
 }
 
-// [v2.0.0] pdf.js 로드
+// [v2.0.0] pdf.js 로드 (v3.11.174 — Web Worker 내 안정 동작 확인된 버전)
 async function loadPdfJS() {
     if (pdfjsLib) return pdfjsLib;
-    const module = await import('https://esm.sh/pdfjs-dist@4.9.155/build/pdf.mjs');
+    const module = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.mjs');
     pdfjsLib = module;
-    // 워커 모드 비활성화 (Web Worker 내부에서는 중첩 워커 사용 불가)
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+    // sub-worker 완전 비활성화: data: URL로 빈 워커를 주입하여
+    // Web Worker 내부에서 중첩 워커 생성 시도 자체를 차단
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'data:text/javascript,';
     return pdfjsLib;
 }
 
@@ -209,10 +210,9 @@ async function parsePDFInWorker(id, fileName, arrayBuffer) {
 
     self.postMessage({ type: 'progress', id, message: `PDF 로딩 중: ${fileName}`, percent: 5 });
 
-    // PDF 문서 로드
+    // PDF 문서 로드 (sub-worker 비활성화 상태에서 동작)
     const loadingTask = pdfjs.getDocument({
-        data: arrayBuffer,
-        useWorkerFetch: false,
+        data: new Uint8Array(arrayBuffer),
         isEvalSupported: false,
         useSystemFonts: true
     });
