@@ -3,7 +3,60 @@
 이 문서는 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식과
 [Semantic Versioning](https://semver.org/lang/ko/) 규칙을 따릅니다.
 
----
+## [2.10.0] - 2026-02-26
+
+### 추가됨 (Added)
+- **행 선택 내보내기** — 검색 결과 테이블에 체크박스를 추가하여 원하는 행만 선택 후 XLSX/CSV 내보내기.
+  - 헤더 전체선택 체크박스 (indeterminate 상태 지원).
+  - 선택 행 보라색 강조 배경, 툴바에 "N행 선택 + ✅XLSX + ✅CSV + ✕" 그룹 표시.
+  - `state.selectedRows: Set<number>` (인덱스 기반) 상태 관리.
+  - 새 검색 시 선택 자동 초기화.
+
+## [2.9.0] - 2026-02-26
+
+### 추가됨 (Added)
+- **검색어 자동완성** — 검색창 입력에 따라 드롭다운 표시.
+  - 빈 입력: 최근 검색어(🕐) 전체 표시.
+  - 타이핑 중: 매칭 최근 검색어 + 로드된 열 이름 `col:NAME`(📋) 제안.
+  - `Tab` → 첫 제안 채움, `↑↓` → 드롭다운 탐색, `Enter` → 선택 후 즉시 검색.
+  - 섹션 구분선으로 최근 검색어 / 열 이름 영역 분리.
+
+## [2.8.0] - 2026-02-26
+
+### 추가됨 (Added)
+- **열 정렬 (Sort)** — 테이블 헤더 클릭으로 정렬.
+  - 1클릭 → 오름차순(▲), 2클릭 → 내림차순(▼), 3클릭 → 원래 순서(⇅) 3단계 사이클.
+  - 숫자 자연 정렬 + `localeCompare` 문자열 정렬 (한국어 포함).
+  - `virtualScroll.sortCol / sortDir` 상태, `applySort()` 처리, 새 검색 시 리셋.
+- **키보드 단축키** — 글로벌 단축키 추가.
+  - `Ctrl+K` / `Cmd+K`: 검색창 포커스 & 전체 선택.
+  - `Esc`: 상세 모달 닫기 → 검색창 초기화.
+  - `↑` / `↓` (검색창 포커스 중): 드롭다운 항목 탐색 or 결과 행 탐색.
+  - 결과 행 탐색 시 보라색 강조 + 자동 스크롤.
+
+## [2.7.1] - 2026-02-25
+
+### 추가됨 (Added)
+- **Privacy Policy 페이지** (`privacy.html`) — Google 앱 인증(OAuth Verification) 심사용. 5개국어(한/영/일/중번/중간) 개인정보처리방침 포함.
+- **Google Drive 인증 가이드** (`GOOGLE_DRIVE_VERIFICATION.md`) — drive.file 권한으로 경고창 제거를 위한 4단계 실행 플랜 문서.
+
+### 변경됨 (Changed)
+- **Google Drive 권한 축소** — `drive.readonly`(제한된 범위, CASA Tier 2 감사 필요) → `drive.file`(민감한 범위, 무료 심사 가능)로 다운그레이드. Picker 방식의 GridSonar 로직에는 기능 변화 없음.
+
+## [2.7.0] - 2026-02-25
+
+### 추가됨 (Added)
+- **PPTX 파싱 지원** — PowerPoint(.pptx) 파일을 Web Worker에서 직접 파싱.
+  - JSZip으로 .pptx 압축 해제 → `ppt/slides/slide*.xml`에서 `<a:t>` 텍스트 추출.
+  - 기존 인덱싱 엔진 재활용 (추가 대형 라이브러리 없이 구현).
+  - `SUPPORTED_EXTENSIONS` (fileParser.js, googleDrive.js), `typeMap` (app.js), HTML `accept` 속성, i18n.js 5개국어 지원 문구, Google Drive Picker Presentations View 모두 갱신.
+
+### 수정됨 (Fixed)
+- **Service Worker 즉시 업데이트** — `sw.js` `install` 이벤트에 `self.skipWaiting()` 추가. 배포 즉시 새 캐시 활성화. `app.js` `controllerchange` → `window.location.reload()` 자동 새로고침 복원.
+- **앱 SUPPORTED_EXT 누락** — `app.js` 내 독립 `SUPPORTED_EXT` Set에 `.pptx` 없어 드롭 단계에서 파일 차단되던 버그 수정.
+- **버전 로그 오표기** — 초기화 로그 `v2.1.0` → `v2.7.0` 수정.
+- **i18n supportedFormats 덮어쓰기** — `i18n.js` 5개 언어의 `supportedFormats`, `errUnsupportedFormat`, `errUnsupportedFormatCount`에 `.pptx` 누락 수정. (HTML 하드코딩이 i18n에 의해 롤백되던 버그)
+- **캐시명 갱신** — `CACHE_NAME` → `gridsonar-v2.7.0`.
 
 ## [2.6.1] - 2026-02-25
 
