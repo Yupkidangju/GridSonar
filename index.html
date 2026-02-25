@@ -36,6 +36,7 @@
         <!-- [v1.2.1] 다국어 언어 선택 -->
         <select id="lang-select" class="lang-select" title="Language"
           style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:var(--text-sm); margin-right:8px;"></select>
+        <button id="btn-help" class="btn btn--icon btn--ghost" data-i18n-title="helpTitle">?</button>
         <button id="btn-clear-cache" class="btn btn--ghost btn--sm" data-i18n-title="clearCacheTitle">
           🗑️ <span class="btn-label" data-i18n="clearCacheBtn">Flush</span>
         </button>
@@ -172,6 +173,17 @@
           <button class="btn btn--ghost btn--icon" id="modal-close">✕</button>
         </div>
         <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- ────── 도움말 모달 [v2.4.0] ────── -->
+    <div class="modal-overlay" id="help-modal" style="display:none;">
+      <div class="modal help-modal">
+        <div class="modal-header">
+          <span class="modal-title" id="help-modal-title">📚 도움말</span>
+          <button class="btn btn--ghost btn--icon" id="help-modal-close">✕</button>
+        </div>
+        <div class="modal-body" id="help-modal-body"></div>
       </div>
     </div>
 

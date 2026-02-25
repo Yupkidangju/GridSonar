@@ -86,7 +86,46 @@ const translations = {
         sessionFiles: '개 파일',
         sessionEmpty: '최근 작업 없음',
         sessionConfirmDelete: '이 세션을 삭제하시겠습니까?',
-        sessionConfirmRestore: '현재 작업을 초기화하고 이 세션을 복원하시겠습니까?'
+        sessionConfirmRestore: '현재 작업을 초기화하고 이 세션을 복원하시겠습니까?',
+        helpTitle: '도움말',
+        helpHtml: `
+            <div class="help-section">
+                <div class="help-section-title">🔍 일반 검색 (다중 키워드)</div>
+                <div class="help-example">
+                    <div class="help-example-query">홍길동 영업부</div>
+                    <div class="help-example-desc">공백으로 구분된 여러 검색어는 <b>AND 조건</b>으로 검색됩니다. 지정한 단어들이 모두 포함된 행만 반환합니다.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">➖ 제외 검색 (NOT 조건)</div>
+                <div class="help-example">
+                    <div class="help-example-query">서울 <span class="help-kbd">-강남</span></div>
+                    <div class="help-example-desc">단어 앞에 빼기(<kbd>-</kbd>) 기호를 붙이면 해당 단어가 포함된 행을 <b>제외</b>합니다.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">📊 숫자 범위 검색</div>
+                <div class="help-example">
+                    <div class="help-example-query">사과 <span class="help-kbd">100~500</span></div>
+                    <div class="help-example-desc">숫자와 물결(<kbd>~</kbd>) 기호를 사용하여 <b>숫자 범위</b>를 지정할 수 있습니다.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🔠 초성 검색 (한글 전용)</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">ㅎㄱㄷ</span></div>
+                    <div class="help-example-desc">한글 자음(초성)만 입력하여 <b>초성 문자열</b>과 일치하는 항목을 검색합니다. (예: ㅎㄱㄷ → 홍길동)</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🎯 열 지정(Column) 검색</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">열:이름</span> 홍길동 <span class="help-kbd">col:금액</span> 100~500</div>
+                    <div class="help-example-desc"><kbd>열:</kbd> 또는 <kbd>col:</kbd> 접두사와 열 이름을 붙여 <b>특정 열에서만</b> 키워드를 검색합니다. 열 이름은 대소문자 구분 없이 부분 일치로 적용됩니다.</div>
+                </div>
+            </div>
+            <div class="help-tip">💡 <b>꿀팁:</b> 검색 결과 행을 더블클릭하면 <b>상세 보기</b>가 열리며 복사 버튼을 통해 전체 행 정보를 쉽게 공유할 수 있습니다.</div>
+        `
     },
     en: {
         appName: 'GridSonar',
@@ -169,7 +208,39 @@ const translations = {
         sessionFiles: 'files',
         sessionEmpty: 'No recent sessions',
         sessionConfirmDelete: 'Delete this session?',
-        sessionConfirmRestore: 'Clear current work and restore this session?'
+        sessionConfirmRestore: 'Clear current work and restore this session?',
+        helpTitle: 'Help',
+        helpHtml: `
+            <div class="help-section">
+                <div class="help-section-title">🔍 Normal Search (AND Condition)</div>
+                <div class="help-example">
+                    <div class="help-example-query">John Sales</div>
+                    <div class="help-example-desc">Multiple words separated by spaces act as an <b>AND condition</b>. It returns rows containing all specified words.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">➖ Exclude Search (NOT Condition)</div>
+                <div class="help-example">
+                    <div class="help-example-query">New York <span class="help-kbd">-Brooklyn</span></div>
+                    <div class="help-example-desc">Prefix a word with a minus (<kbd>-</kbd>) sign to <b>exclude</b> rows containing that word.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">📊 Number Range Search</div>
+                <div class="help-example">
+                    <div class="help-example-query">Apple <span class="help-kbd">100~500</span></div>
+                    <div class="help-example-desc">Specify a <b>number range</b> using numbers and a tilde (<kbd>~</kbd>). Returns rows containing values within the range.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🎯 Column Target Search</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">col:Name</span> John <span class="help-kbd">col:Price</span> 100~500</div>
+                    <div class="help-example-desc">Use <kbd>col:</kbd> prefix followed by a column name to search a keyword <b>only in that specific column</b>. Partial matching and case-insensitivity apply.</div>
+                </div>
+            </div>
+            <div class="help-tip">💡 <b>Tip:</b> Double-click a row in the search results to open the <b>Detail View</b>, from which you can easily copy all information.</div>
+        `
     },
     ja: {
         appName: 'GridSonar',
@@ -252,7 +323,39 @@ const translations = {
         sessionFiles: '個のファイル',
         sessionEmpty: '最近の作業なし',
         sessionConfirmDelete: 'このセッションを削除しますか？',
-        sessionConfirmRestore: '現在の作業をクリアしてこのセッションを復元しますか？'
+        sessionConfirmRestore: '現在の作業をクリアしてこのセッションを復元しますか？',
+        helpTitle: 'ヘルプ',
+        helpHtml: `
+            <div class="help-section">
+                <div class="help-section-title">🔍 通常検索 (AND 条件)</div>
+                <div class="help-example">
+                    <div class="help-example-query">山田 営業部</div>
+                    <div class="help-example-desc">空白で区切られた複数のキーワードは<b>AND条件</b>として機能します。すべての指定語句が含まれる行を返します。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">➖ 除外検索 (NOT 条件)</div>
+                <div class="help-example">
+                    <div class="help-example-query">東京 <span class="help-kbd">-新宿</span></div>
+                    <div class="help-example-desc">単語の前にマイナス(<kbd>-</kbd>)記号を付けると、その語句を含む行を<b>除外</b>します。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">📊 数値範囲検索</div>
+                <div class="help-example">
+                    <div class="help-example-query">りんご <span class="help-kbd">100~500</span></div>
+                    <div class="help-example-desc">数値とチルダ(<kbd>~</kbd>)記号を使用して<b>数値範囲</b>を指定できます。範囲内の数値が含まれる行を検索します。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🎯 列指定検索</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">col:氏名</span> 山田 <span class="help-kbd">col:価格</span> 100~500</div>
+                    <div class="help-example-desc"><kbd>col:</kbd> 接頭辞と列名を続けることで、<b>特定の列内</b>のみでキーワードを検索します。列名は大文字小文字を区別せず、部分一致で適用されます。</div>
+                </div>
+            </div>
+            <div class="help-tip">💡 <b>ヒント：</b> 検索結果の行をダブルクリックすることで、<b>詳細表示</b>を開き、すべての情報を簡単にコピーできます。</div>
+        `
     },
     'zh-TW': {
         appName: 'GridSonar',
@@ -335,7 +438,39 @@ const translations = {
         sessionFiles: '個檔案',
         sessionEmpty: '沒有最近的工作',
         sessionConfirmDelete: '確定要刪除此工作階段嗎？',
-        sessionConfirmRestore: '確定要清除目前工作並還原此工作階段嗎？'
+        sessionConfirmRestore: '確定要清除目前工作並還原此工作階段嗎？',
+        helpTitle: '說明',
+        helpHtml: `
+            <div class="help-section">
+                <div class="help-section-title">🔍 一般搜尋 (AND 條件)</div>
+                <div class="help-example">
+                    <div class="help-example-query">張三 業務部</div>
+                    <div class="help-example-desc">以空格分隔的多個關鍵字將作為 <b>AND 條件</b>。只傳回包含所有指定詞彙的資料列。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">➖ 排除搜尋 (NOT 條件)</div>
+                <div class="help-example">
+                    <div class="help-example-query">台北 <span class="help-kbd">-信義</span></div>
+                    <div class="help-example-desc">在單字前加上減號 (<kbd>-</kbd>) 可<b>排除</b>包含該詞彙的資料列。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">📊 數值範圍搜尋</div>
+                <div class="help-example">
+                    <div class="help-example-query">蘋果 <span class="help-kbd">100~500</span></div>
+                    <div class="help-example-desc">使用數字和波浪號 (<kbd>~</kbd>) 指定<b>數值範圍</b>。傳回包含範圍內數值的資料列。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🎯 指定欄位搜尋</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">col:姓名</span> 張三 <span class="help-kbd">col:價格</span> 100~500</div>
+                    <div class="help-example-desc">使用 <kbd>col:</kbd> 前綴加上欄位名稱可<b>僅在特定欄位中</b>搜尋關鍵字。欄位名稱支援不區分大小寫的部分比對。</div>
+                </div>
+            </div>
+            <div class="help-tip">💡 <b>提示：</b> 在搜尋結果中連按兩下資料列可開啟<b>詳細資料</b>，並從中輕鬆複製所有資訊。</div>
+        `
     },
     'zh-CN': {
         appName: 'GridSonar',
@@ -418,7 +553,39 @@ const translations = {
         sessionFiles: '个文件',
         sessionEmpty: '没有最近的工作',
         sessionConfirmDelete: '确定要删除此工作会话吗？',
-        sessionConfirmRestore: '确定要清除当前工作并恢复此工作会话吗？'
+        sessionConfirmRestore: '确定要清除当前工作并恢复此工作会话吗？',
+        helpTitle: '帮助',
+        helpHtml: `
+            <div class="help-section">
+                <div class="help-section-title">🔍 常用搜索 (AND 条件)</div>
+                <div class="help-example">
+                    <div class="help-example-query">张三 业务部</div>
+                    <div class="help-example-desc">用空格分隔的多个关键词将作为 <b>AND 条件</b>。只返回包含所有指定词汇的数据行。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">➖ 排除搜索 (NOT 条件)</div>
+                <div class="help-example">
+                    <div class="help-example-query">北京 <span class="help-kbd">-朝阳</span></div>
+                    <div class="help-example-desc">在单词前加上减号 (<kbd>-</kbd>) 可<b>排除</b>包含该词汇的数据行。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">📊 数字范围搜索</div>
+                <div class="help-example">
+                    <div class="help-example-query">苹果 <span class="help-kbd">100~500</span></div>
+                    <div class="help-example-desc">使用数字和波浪号 (<kbd>~</kbd>) 指定<b>数字范围</b>。返回包含范围内数字的数据行。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">🎯 指定列搜索</div>
+                <div class="help-example">
+                    <div class="help-example-query"><span class="help-kbd">col:姓名</span> 张三 <span class="help-kbd">col:价格</span> 100~500</div>
+                    <div class="help-example-desc">使用 <kbd>col:</kbd> 前缀加上列名称可<b>仅在特定列中</b>搜索关键词。列名称支持不区分大小写的部分匹配。</div>
+                </div>
+            </div>
+            <div class="help-tip">💡 <b>提示：</b> 在搜索结果中双击数据行可打开<b>详细信息</b>，并从中轻松复制所有内容。</div>
+        `
     }
 };
 

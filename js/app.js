@@ -94,6 +94,13 @@ function cacheDomRefs() {
     // [v2.1.0] 세션 히스토리 DOM 참조
     dom.sessionHistory = $('session-history');
     dom.sessionList = $('session-list');
+
+    // [v2.4.0] 도움말 모달 참조
+    dom.btnHelp = $('btn-help');
+    dom.helpModal = $('help-modal');
+    dom.helpModalTitle = $('help-modal-title');
+    dom.helpModalBody = $('help-modal-body');
+    dom.helpModalClose = $('help-modal-close');
 }
 
 function loadSettings() {
@@ -247,13 +254,29 @@ function bindEvents() {
         if (state.currentQuery) performSearch();
     });
 
-    // 모달 닫기
+    // [v2.4.0] 도움말 모달
+    dom.btnHelp.addEventListener('click', () => {
+        dom.helpModalTitle.textContent = '📚 ' + t('helpTitle');
+        dom.helpModalBody.innerHTML = t('helpHtml');
+        dom.helpModal.style.display = 'flex';
+    });
+    dom.helpModalClose.addEventListener('click', () => {
+        dom.helpModal.style.display = 'none';
+    });
+    dom.helpModal.addEventListener('click', (e) => {
+        if (e.target === dom.helpModal) dom.helpModal.style.display = 'none';
+    });
+
+    // 상세 보기 모달 닫기
     dom.modalClose.addEventListener('click', closeDetailModal);
     dom.detailModal.addEventListener('click', (e) => {
         if (e.target === dom.detailModal) closeDetailModal();
     });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeDetailModal();
+        if (e.key === 'Escape') {
+            closeDetailModal();
+            dom.helpModal.style.display = 'none';
+        }
     });
 }
 
