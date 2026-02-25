@@ -75,21 +75,30 @@ export function parseQuery(rawQuery) {
         return { keywords, excludes, ranges, columnFilters, regexFilters, raw: rawQuery };
     }
 
-    const tokens = remaining.split(/\s+/);
+    // [v2.6.1] 따옴표를 포함한 토큰화 (공백 포함 문자열 지원)
+    // 예: 열:"오늘 요금" -> [ '열:"오늘 요금"' ]
+    const tokenRegex = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g;
+    const tokens = remaining.match(tokenRegex) || [];
+
+    const unquote = (str) => {
+        if (/^".*"$/.test(str)) return str.slice(1, -1);
+        if (/^'.*'$/.test(str)) return str.slice(1, -1);
+        return str;
+    };
 
     // [v2.3.0] 열 모드 상태: 현재 활성화된 열 이름 (다음 키워드에 적용)
     let pendingColumn = null;
 
-    for (const token of tokens) {
-        // 제외 검색어 처리
-        if (token.startsWith('-') && token.length > 1) {
+    for (const rawToken of tokens) {
+        // 제외 검색어 처리 (-"단어" 또는 -단어)
+        if (rawToken.startsWith('-') && rawToken.length > 1) {
             pendingColumn = null;
-            excludes.push(token.slice(1));
+            excludes.push(unquote(rawToken.slice(1)));
             continue;
         }
 
         // 범위 검색 처리
-        const rangeMatch = token.match(RANGE_PATTERN);
+        const rangeMatch = rawToken.match(RANGE_PATTERN);
         if (rangeMatch) {
             let minVal = parseFloat(rangeMatch[1]);
             let maxVal = parseFloat(rangeMatch[2]);
@@ -102,21 +111,21 @@ export function parseQuery(rawQuery) {
         }
 
         // [v2.3.0] 열 모드 검색 처리
-        const colMatch = token.match(COLUMN_PATTERN);
+        const colMatch = rawToken.match(COLUMN_PATTERN);
         if (colMatch) {
-            pendingColumn = colMatch[1];
+            pendingColumn = unquote(colMatch[1]);
             continue;
         }
 
         // 열 모드가 활성화된 경우 → columnFilter로 등록
         if (pendingColumn) {
-            columnFilters.push({ column: pendingColumn, keyword: token });
+            columnFilters.push({ column: pendingColumn, keyword: unquote(rawToken) });
             pendingColumn = null;
             continue;
         }
 
         // 일반 키워드
-        keywords.push(token);
+        keywords.push(unquote(rawToken));
     }
 
     return { keywords, excludes, ranges, columnFilters, regexFilters, raw: rawQuery };

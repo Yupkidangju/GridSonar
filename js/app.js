@@ -18,6 +18,7 @@ import { exportResults, exportFailedFiles } from './utils/exporter.js';
 import { copyResultsToClipboard } from './utils/clipboard.js';
 import { t, getAvailableLanguages, getLanguage, setLanguage, translatePage } from './utils/i18n.js';
 import { logger } from './utils/logger.js';
+import { getDriveConfig, saveDriveConfig, connectAndPickFiles } from './core/googleDrive.js';
 
 // ── 전역 상태 ──
 const state = {
@@ -60,6 +61,7 @@ function cacheDomRefs() {
     dom.searchInput = $('search-input');
     dom.searchStats = $('search-stats');
     dom.searchHistory = $('search-history');
+    dom.uploadContainer = $('upload-container');
     dom.dropzone = $('dropzone');
     dom.fileTree = $('file-tree');
     dom.sidebarContent = $('sidebar-content');
@@ -102,6 +104,15 @@ function cacheDomRefs() {
     dom.helpModalTitle = $('help-modal-title');
     dom.helpModalBody = $('help-modal-body');
     dom.helpModalClose = $('help-modal-close');
+
+    // [v2.6.0] Google Drive 연동 DOM
+    dom.btnGoogleDrive = $('btn-google-drive');
+    dom.driveSettingsModal = $('drive-settings-modal');
+    dom.driveSettingsClose = $('drive-settings-close');
+    dom.driveSettingsCancel = $('drive-settings-cancel');
+    dom.driveSettingsSave = $('drive-settings-save');
+    dom.driveApiKey = $('drive-api-key');
+    dom.driveClientId = $('drive-client-id');
 }
 
 function loadSettings() {
@@ -192,6 +203,49 @@ function bindEvents() {
         dom.fileInput.value = '';
     });
     dom.btnAddFiles.addEventListener('click', () => dom.fileInput.click());
+
+    // [v2.6.0] Google Drive 연동 이벤트
+    dom.btnGoogleDrive.addEventListener('click', (e) => {
+        e.stopPropagation(); // 드롭존 클릭(로컬 파일 탐색기 열기) 버블링 방지
+        connectAndPickFiles({
+            onSettingsNeeded: () => {
+                // 저장된 설정값을 폼에 세팅하고 모달 열기
+                const conf = getDriveConfig();
+                dom.driveApiKey.value = conf.apiKey;
+                dom.driveClientId.value = conf.clientId;
+                dom.driveSettingsModal.style.display = 'flex';
+            },
+            onStatus: (msg, isLoad, pct) => {
+                if (!msg) { setStatus(t('statusReady'), false); return; }
+                setStatus(msg, isLoad, pct);
+            },
+            onProgress: (pct) => setStatus(`${t('driveDownloading') || '다운로드 중'} (${pct}%)`, true, pct),
+            onFilesReady: (files) => {
+                // 다운로드 완료된 File[] 객체들을 핸들러로 전달
+                if (files && files.length > 0) {
+                    handleFileDrop(files);
+                } else {
+                    setStatus(t('statusReady') || '준비됨', false);
+                }
+            },
+            onError: (err) => {
+                setStatus(t('statusReady') || '준비됨', false);
+                showToast(`⚠️ ${err}`, 'error');
+            }
+        });
+    });
+
+    // Google Drive 설정 모달 액션
+    const closeDriveModal = () => dom.driveSettingsModal.style.display = 'none';
+    dom.driveSettingsClose.addEventListener('click', closeDriveModal);
+    dom.driveSettingsCancel.addEventListener('click', closeDriveModal);
+    dom.driveSettingsSave.addEventListener('click', () => {
+        const key = dom.driveApiKey.value.trim();
+        const cid = dom.driveClientId.value.trim();
+        saveDriveConfig(key, cid);
+        closeDriveModal();
+        dom.btnGoogleDrive.click(); // 설정 후 즉시 연결 재시도
+    });
 
     // 테마
     dom.btnTheme.addEventListener('click', toggleTheme);
@@ -433,7 +487,7 @@ async function handleFileDrop(files) {
     if (files.length === 0) return;
 
     // UI 전환
-    dom.dropzone.style.display = 'none';
+    dom.uploadContainer.style.display = 'none';
     dom.fileTree.style.display = 'block';
 
     state.indexingJobs++;
@@ -1164,7 +1218,7 @@ function removeFile(fileKey) {
 
     if (state.files.size === 0) {
         dom.fileTree.style.display = 'none';
-        dom.dropzone.style.display = 'block';
+        dom.uploadContainer.style.display = 'flex';
     }
 
     renderFileTree();

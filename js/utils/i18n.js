@@ -88,6 +88,20 @@ const translations = {
         sessionEmpty: '최근 작업 없음',
         sessionConfirmDelete: '이 세션을 삭제하시겠습니까?',
         sessionConfirmRestore: '현재 작업을 초기화하고 이 세션을 복원하시겠습니까?',
+        driveConnect: 'Google Drive',
+        driveDisconnect: '연결 해제',
+        driveConnecting: 'Google Drive 연결 중...',
+        drivePickerTitle: 'Google Drive에서 파일 선택',
+        drivePickerOpen: '파일을 선택하세요...',
+        driveDownloading: '다운로드 중',
+        driveDownloadComplete: '다운로드 완료',
+        driveError: 'Google Drive 오류',
+        driveLoginRequired: 'Google 로그인이 필요합니다',
+        driveUnsupported: '지원하지 않는 파일 형식입니다',
+        driveSettings: '설정',
+        driveSave: '저장 & 연결',
+        driveExportLimit: '파일이 너무 큽니다 (내보내기 10MB 제한)',
+        driveSettingsGuide: 'Google Cloud Console에서 생성 방법',
         helpTitle: '도움말',
         helpHtml: `
             <div class="help-section">
@@ -123,6 +137,13 @@ const translations = {
                 <div class="help-example">
                     <div class="help-example-query"><span class="help-kbd">열:이름</span> 홍길동 <span class="help-kbd">col:금액</span> 100~500</div>
                     <div class="help-example-desc"><kbd>열:</kbd> 또는 <kbd>col:</kbd> 접두사와 열 이름을 붙여 <b>특정 열에서만</b> 키워드를 검색합니다. 열 이름은 대소문자 구분 없이 부분 일치로 적용됩니다.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">💬 공백 포함 키워드 (따옴표)</div>
+                <div class="help-example">
+                    <div class="help-example-query">열:<span class="help-kbd">"오늘 요금"</span> <span class="help-kbd">"장기 미납"</span></div>
+                    <div class="help-example-desc">공백이 포함된 열 이름이나 검색어는 <b>큰따옴표 서식(" ")</b>으로 감싸서 하나의 검색어로 묶을 수 있습니다.</div>
                 </div>
             </div>
             <div class="help-section">
@@ -222,6 +243,20 @@ const translations = {
         sessionEmpty: 'No recent sessions',
         sessionConfirmDelete: 'Delete this session?',
         sessionConfirmRestore: 'Clear current work and restore this session?',
+        driveConnect: 'Google Drive',
+        driveDisconnect: 'Disconnect',
+        driveConnecting: 'Connecting to Google Drive...',
+        drivePickerTitle: 'Select files from Google Drive',
+        drivePickerOpen: 'Please select files...',
+        driveDownloading: 'Downloading',
+        driveDownloadComplete: 'Download complete',
+        driveError: 'Google Drive Error',
+        driveLoginRequired: 'Google login required',
+        driveUnsupported: 'Unsupported file format',
+        driveSettings: 'Settings',
+        driveSave: 'Save & Connect',
+        driveExportLimit: 'File too large (10MB export limit)',
+        driveSettingsGuide: 'How to create them in Google Cloud Console',
         helpTitle: 'Help',
         helpHtml: `
             <div class="help-section">
@@ -250,6 +285,13 @@ const translations = {
                 <div class="help-example">
                     <div class="help-example-query"><span class="help-kbd">col:Name</span> John <span class="help-kbd">col:Price</span> 100~500</div>
                     <div class="help-example-desc">Use <kbd>col:</kbd> prefix followed by a column name to search a keyword <b>only in that specific column</b>. Partial matching and case-insensitivity apply.</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">💬 Phrase Search (Quotes)</div>
+                <div class="help-example">
+                    <div class="help-example-query">col:<span class="help-kbd">"today fee"</span> <span class="help-kbd">"long term"</span></div>
+                    <div class="help-example-desc">Wrap keywords or column names with spaces in <b>double quotes (" ")</b> to treat them as a single phrase.</div>
                 </div>
             </div>
             <div class="help-section">
@@ -349,6 +391,20 @@ const translations = {
         sessionEmpty: '最近の作業なし',
         sessionConfirmDelete: 'このセッションを削除しますか？',
         sessionConfirmRestore: '現在の作業をクリアしてこのセッションを復元しますか？',
+        driveConnect: 'Google Drive',
+        driveDisconnect: '切断',
+        driveConnecting: 'Google Driveに接続中...',
+        drivePickerTitle: 'Google Driveからファイルを選択',
+        drivePickerOpen: 'ファイルを選択してください...',
+        driveDownloading: 'ダウンロード中',
+        driveDownloadComplete: 'ダウンロード完了',
+        driveError: 'Google Drive エラー',
+        driveLoginRequired: 'Googleログインが必要です',
+        driveUnsupported: 'サポートされていないファイル形式です',
+        driveSettings: '設定',
+        driveSave: '保存して接続',
+        driveExportLimit: 'ファイルが大きすぎます (エクスポート制限10MB)',
+        driveSettingsGuide: 'Google Cloud Consoleでの作成方法',
         helpTitle: 'ヘルプ',
         helpHtml: `
             <div class="help-section">
@@ -377,6 +433,13 @@ const translations = {
                 <div class="help-example">
                     <div class="help-example-query"><span class="help-kbd">col:氏名</span> 山田 <span class="help-kbd">col:価格</span> 100~500</div>
                     <div class="help-example-desc"><kbd>col:</kbd> 接頭辞と列名を続けることで、<b>特定の列内</b>のみでキーワードを検索します。列名は大文字小文字を区別せず、部分一致で適用されます。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">💬 空白を含むフレーズ検索（引用符）</div>
+                <div class="help-example">
+                    <div class="help-example-query">col:<span class="help-kbd">"今日の 料金"</span> <span class="help-kbd">"長期 未納"</span></div>
+                    <div class="help-example-desc">空白を含む検索語や列名は、<b>ダブルクォーテーション(" ")</b>で囲むことで一つのフレーズとして扱われます。</div>
                 </div>
             </div>
             <div class="help-section">
@@ -476,6 +539,20 @@ const translations = {
         sessionEmpty: '沒有最近的工作',
         sessionConfirmDelete: '確定要刪除此工作階段嗎？',
         sessionConfirmRestore: '確定要清除目前工作並還原此工作階段嗎？',
+        driveConnect: 'Google Drive',
+        driveDisconnect: '中斷連線',
+        driveConnecting: '正在連線至 Google Drive...',
+        drivePickerTitle: '從 Google Drive 選擇檔案',
+        drivePickerOpen: '請選擇檔案...',
+        driveDownloading: '下載中',
+        driveDownloadComplete: '下載完成',
+        driveError: 'Google Drive 錯誤',
+        driveLoginRequired: '需要登入 Google',
+        driveUnsupported: '不支援的檔案格式',
+        driveSettings: '設定',
+        driveSave: '儲存並連線',
+        driveExportLimit: '檔案過大 (匯出限制 10MB)',
+        driveSettingsGuide: '如何在 Google Cloud Console 中建立',
         helpTitle: '說明',
         helpHtml: `
             <div class="help-section">
@@ -504,6 +581,13 @@ const translations = {
                 <div class="help-example">
                     <div class="help-example-query"><span class="help-kbd">col:姓名</span> 張三 <span class="help-kbd">col:價格</span> 100~500</div>
                     <div class="help-example-desc">使用 <kbd>col:</kbd> 前綴加上欄位名稱可<b>僅在特定欄位中</b>搜尋關鍵字。欄位名稱支援不區分大小寫的部分比對。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">💬 包含空白的詞彙 (引號)</div>
+                <div class="help-example">
+                    <div class="help-example-query">col:<span class="help-kbd">"今日 費用"</span> <span class="help-kbd">"長期 欠繳"</span></div>
+                    <div class="help-example-desc">包含空白的搜尋詞或欄位名稱，可以使用<b>雙引號 (" ")</b> 包裹，將其視為單一詞彙。</div>
                 </div>
             </div>
             <div class="help-section">
@@ -603,6 +687,20 @@ const translations = {
         sessionEmpty: '没有最近的工作',
         sessionConfirmDelete: '确定要删除此工作会话吗？',
         sessionConfirmRestore: '确定要清除当前工作并恢复此工作会话吗？',
+        driveConnect: 'Google Drive',
+        driveDisconnect: '断开连接',
+        driveConnecting: '正在连接到 Google Drive...',
+        drivePickerTitle: '从 Google Drive 选择文件',
+        drivePickerOpen: '请选择文件...',
+        driveDownloading: '下载中',
+        driveDownloadComplete: '下载完成',
+        driveError: 'Google Drive 错误',
+        driveLoginRequired: '需要登录 Google',
+        driveUnsupported: '不支持的文件格式',
+        driveSettings: '设置',
+        driveSave: '保存并连接',
+        driveExportLimit: '文件过大 (导出限制超 10MB)',
+        driveSettingsGuide: '如何在 Google Cloud Console 中创建',
         helpTitle: '帮助',
         helpHtml: `
             <div class="help-section">
@@ -631,6 +729,13 @@ const translations = {
                 <div class="help-example">
                     <div class="help-example-query"><span class="help-kbd">col:姓名</span> 张三 <span class="help-kbd">col:价格</span> 100~500</div>
                     <div class="help-example-desc">使用 <kbd>col:</kbd> 前缀加上列名称可<b>仅在特定列中</b>搜索关键词。列名称支持不区分大小写的部分匹配。</div>
+                </div>
+            </div>
+            <div class="help-section">
+                <div class="help-section-title">💬 包含空格的词汇 (引号)</div>
+                <div class="help-example">
+                    <div class="help-example-query">col:<span class="help-kbd">"今日 费用"</span> <span class="help-kbd">"长期 欠缴"</span></div>
+                    <div class="help-example-desc">包含空格的搜索词或列名称，可以使用<b>双引号 (" ")</b> 包裹，将其视为单个词汇。</div>
                 </div>
             </div>
             <div class="help-section">

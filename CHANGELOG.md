@@ -5,6 +5,26 @@
 
 ---
 
+## [2.6.1] - 2026-02-25
+
+### 추가됨 (Added)
+- **따옴표 토큰화** — 검색어에 `"공백 포함 단어"` 또는 `'공백 포함 단어'` 형식으로 따옴표를 사용하면, 공백이 포함된 문자열을 하나의 토큰으로 인식. `열:"오늘 요금"`, `-"장기 미납"` 등 열 이름/제외어/일반 키워드 모두 지원.
+- **도움말 갱신** — 5개 국어 도움말에 「💬 공백 포함 키워드 (따옴표)」 섹션 추가.
+
+## [2.6.0] - 2026-02-25
+
+### 추가됨 (Added)
+- **Google Drive 연동** — 100% 클라이언트 사이드 Google Drive 파일 선택 및 다운로드 기능 구현.
+  - Google Identity Services (GIS) + Google Picker API + Drive API v3 통합.
+  - Google Sheets → XLSX, Google Docs → DOCX 자동 변환 다운로드.
+  - `fetch` 스트리밍으로 실시간 다운로드 진행률 표시.
+  - 설정 모달(API Key / Client ID)을 통한 사용자별 인증 정보 관리.
+- **i18n 확장** — Google Drive 관련 15종 번역 키를 5개 국어에 추가.
+- **Service Worker 갱신** — `googleDrive.js` 프리캐시, Google API CDN 도메인 패턴 추가, `CACHE_NAME` v2.6.0.
+
+### 변경됨 (Changed)
+- **UI 구조 개선** — Google Drive 버튼을 드롭존 *바깥*으로 분리(`upload-container`)하여 이벤트 버블링 충돌 해소.
+
 ## [2.5.5] - 2026-02-25
 
 ### 수정됨 (Fixed)

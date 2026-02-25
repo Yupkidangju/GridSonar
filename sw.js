@@ -8,7 +8,7 @@
  * - 기타: Network First
  */
 
-const CACHE_NAME = 'gridsonar-v2.5.5';
+const CACHE_NAME = 'gridsonar-v2.6.0';
 
 // 프리캐시할 정적 에셋
 const PRECACHE_URLS = [
@@ -26,6 +26,7 @@ const PRECACHE_URLS = [
     './js/core/searchEngine.js',
     './js/core/fileParser.js',
     './js/core/cacheManager.js',
+    './js/core/googleDrive.js',
     './js/utils/config.js',
     './js/utils/exporter.js',
     './js/utils/clipboard.js',
@@ -42,7 +43,9 @@ const CDN_PATTERNS = [
     'cdn.jsdelivr.net',
     'cdnjs.cloudflare.com',
     'fonts.googleapis.com',
-    'fonts.gstatic.com'
+    'fonts.gstatic.com',
+    'accounts.google.com',
+    'apis.google.com'
 ];
 
 // [v1.1.3] 설치: 정적 에셋 프리캐시
