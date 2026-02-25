@@ -48,14 +48,16 @@ const CDN_PATTERNS = [
     'apis.google.com'
 ];
 
-// [v1.1.3] 설치: 정적 에셋 프리캐시
-// skipWaiting() 의도적으로 미사용:
-// 즉시 활성화되면 controllerchange→reload로 사용자 작업이 중단됨.
-// 새 워커는 모든 탭이 닫힌 후 자연스럽게 활성화됩니다.
+// [v2.7.0] 설치: 정적 에셋 프리캐시 + 즉시 활성화
+// skipWaiting()을 호출하여 새 SW가 설치 즉시 활성화되도록 함.
+// 이전에는 "사용자 작업 중단 방지"를 위해 미사용했으나,
+// GitHub Pages 등 정적 호스팅에서 새 버전이 영원히 적용되지 않는
+// 치명적 문제가 발생하여 skipWaiting + clients.claim 조합으로 전환.
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => cache.addAll(PRECACHE_URLS))
+            .then(() => self.skipWaiting())
     );
 });
 
