@@ -334,11 +334,23 @@ function _applyAndCondition(index, query, rowScores) {
         const rowTextLower = rowTextOriginal.toLowerCase();
         let allPassed = true;
 
-        // 1. 일반 키워드 AND 검사: 소문자 텍스트로 비교
+        // 1. 일반 키워드 AND 검사: 소문자 텍스트 및 초성 검사 병행
+        // [v2.5.5 Fix] 초성 키워드(ㅎㄱㄷ)는 원본 텍스트에 존재하지 않으므로
+        // extractChosung으로 초성 변환 후 매칭해야 AND 필터에서 살아남음
         if (query.keywords.length > 0) {
-            const keywordsPassed = query.keywords.every(
-                kw => rowTextLower.includes(kw.toLowerCase())
-            );
+            const textChosung = extractChosung(rowTextOriginal);
+
+            const keywordsPassed = query.keywords.every(kw => {
+                const kwLower = kw.toLowerCase();
+
+                // A. 정확/부분 매칭 통과
+                if (rowTextLower.includes(kwLower)) return true;
+
+                // B. 초성 검색 쿼리일 경우, 초성 매칭 통과
+                if (isChosungQuery(kw) && textChosung.includes(kw)) return true;
+
+                return false;
+            });
             if (!keywordsPassed) allPassed = false;
         }
 
