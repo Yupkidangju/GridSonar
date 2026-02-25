@@ -16,7 +16,10 @@ import { t } from '../utils/i18n.js';
 import { logger } from '../utils/logger.js';
 
 // ── 상수 ──
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+// [v2.7.1] drive.readonly(제한된 범위)에서 drive.file(민감한 범위)로 권한 축소
+// GridSonar는 Picker로 선택한 파일만 다운로드하므로 전체 읽기 권한 불필요.
+// drive.file은 사용자가 명시적으로 선택한 파일에만 접근 — 구글 무료 심사 가능.
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 
 // [v2.6.2] 공용(배포용) API 인증 정보
