@@ -30,10 +30,17 @@ function loadPapaParse() {
 
 function loadPdfJS() {
     if (typeof pdfjsLib !== 'undefined') return pdfjsLib;
-    // v3.11.174 안정 버전 사용
+    // [v2.0.2] pdf.js v3.11.174 안정 버전 사용
+    // 1단계: 메인 라이브러리 로드
     importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
-    // pdf.js 내부 워커 통신 활성화
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    // 2단계: 워커 코드를 현재 스레드에 직접 로드 (Nested Worker CORS 우회)
+    //   - workerSrc URL 지정 방식은 Worker 내에서 Nested Worker 생성을 시도하며,
+    //     브라우저 CORS 정책에 의해 차단됨.
+    //   - FakeWorker fallback도 document.createElement() 호출로 인해
+    //     Worker 환경에서 "document is not defined" 에러 발생.
+    //   - 해결: pdf.worker.min.js를 importScripts로 동일 스레드에 로드하면
+    //     pdf.js가 워커 코드 존재를 감지하여 별도 워커 생성을 건너뜀.
+    importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js');
     return pdfjsLib;
 }
 
@@ -186,7 +193,7 @@ async function parseExcelInWorker(id, fileName, arrayBuffer) {
 }
 
 /**
- * [v2.0.0] PDF 파싱
+ * [v2.0.2] PDF 파싱 (Nested Worker CORS 우회 + 표준 폰트 CDN 로드)
  */
 async function parsePDFInWorker(id, fileName, arrayBuffer) {
     const pdfjs = loadPdfJS();
@@ -196,7 +203,10 @@ async function parsePDFInWorker(id, fileName, arrayBuffer) {
     const loadingTask = pdfjs.getDocument({
         data: new Uint8Array(arrayBuffer),
         isEvalSupported: false,
-        useSystemFonts: true
+        useSystemFonts: true,
+        // [v2.0.2] 표준 폰트(Helvetica, Times-Roman 등) CDN 경로 지정
+        // PDF에 내장되지 않은 기본 폰트를 만날 때 텍스트 추출 실패를 방지
+        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
     });
     const pdf = await loadingTask.promise;
     const numPages = pdf.numPages;

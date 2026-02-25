@@ -5,6 +5,13 @@
 
 ---
 
+## [2.0.2] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **PDF 파싱 "document is not defined" 에러 해결** — Worker 내에서 `workerSrc` URL 지정 방식이 Nested Worker 생성 → CORS 차단 → FakeWorker fallback → `document.createElement()` 호출 → Worker 환경에서 `document` 없음 에러. `pdf.worker.min.js`를 `importScripts`로 동일 스레드에 직접 로드하여 해결.
+- **PDF 표준 폰트 누락 에러 방지** — `standardFontDataUrl` 옵션 추가, PDF에 내장되지 않은 기본 폰트(Helvetica, Times-Roman 등) 렌더링 시 CDN에서 로드
+- **Service Worker CDN 패턴 누락 수정** — `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`을 CDN_PATTERNS에 추가, pdf.js/PapaParse/mammoth CDN 응답에 Stale While Revalidate 전략 적용
+
 ## [2.0.0] - 2026-02-25
 
 ### 추가됨 (Added)

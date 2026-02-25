@@ -8,7 +8,7 @@
  * - 기타: Network First
  */
 
-const CACHE_NAME = 'gridsonar-v2.0.1';
+const CACHE_NAME = 'gridsonar-v2.0.2';
 
 // 프리캐시할 정적 에셋
 const PRECACHE_URLS = [
@@ -39,6 +39,8 @@ const PRECACHE_URLS = [
 const CDN_PATTERNS = [
     'esm.sh',
     'cdn.sheetjs.com',
+    'cdn.jsdelivr.net',
+    'cdnjs.cloudflare.com',
     'fonts.googleapis.com',
     'fonts.gstatic.com'
 ];
