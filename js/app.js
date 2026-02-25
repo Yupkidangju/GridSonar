@@ -593,7 +593,7 @@ async function indexFileViaWorker(file, fileKey, fileInfo, isBatch) {
 
         const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
         // [v2.0.0] PDF/DOCX 파일 타입 분기 추가
-        const typeMap = { '.csv': 'csv', '.xlsx': 'xlsx', '.xls': 'xls', '.pdf': 'pdf', '.docx': 'docx' };
+        const typeMap = { '.csv': 'csv', '.xlsx': 'xlsx', '.xls': 'xls', '.pdf': 'pdf', '.docx': 'docx', '.pptx': 'pptx' };
         const fileType = typeMap[ext] || ext.replace('.', '');
         let data;
         if (fileType === 'csv') {

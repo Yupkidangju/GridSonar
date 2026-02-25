@@ -94,6 +94,13 @@ function loadMammoth() {
     return mammoth;
 }
 
+// [v2.7.0] PPTX 파싱용 JSZip 로더
+function loadJSZip() {
+    if (typeof JSZip !== 'undefined') return JSZip;
+    importScripts('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+    return JSZip;
+}
+
 // 메시지 핸들러
 self.onmessage = async (e) => {
     const { type, id, fileName, fileType, data } = e.data;
@@ -109,6 +116,8 @@ self.onmessage = async (e) => {
             await parsePDFInWorker(id, fileName, data);
         } else if (fileType === 'docx') {
             await parseDOCXInWorker(id, fileName, data);
+        } else if (fileType === 'pptx') {
+            await parsePPTXInWorker(id, fileName, data);
         } else {
             self.postMessage({ type: 'error', id, message: `지원하지 않는 파일 형식: ${fileType}` });
         }
@@ -346,6 +355,85 @@ async function parseDOCXInWorker(id, fileName, arrayBuffer) {
         self.postMessage({
             type: 'progress', id,
             message: `DOCX 파싱 중: ${fileName} (${totalRows}/${paragraphs.length}문단)`,
+            percent: Math.min(pct, 90)
+        });
+    }
+
+    self.postMessage({ type: 'complete', id, totalRows });
+}
+
+/**
+ * [v2.7.0] PPTX 파싱 (JSZip + XML 텍스트 추출)
+ * .pptx는 ZIP 안에 ppt/slides/slide*.xml 파일들이 들어있는 구조.
+ * 각 슬라이드 XML에서 <a:t> 태그 내의 텍스트를 추출하여 가상 엑셀 형식으로 변환.
+ */
+async function parsePPTXInWorker(id, fileName, arrayBuffer) {
+    const zip = loadJSZip();
+
+    self.postMessage({ type: 'progress', id, message: `PPTX 로딩 중: ${fileName}`, percent: 5 });
+
+    // ZIP 압축 해제
+    const archive = await zip.loadAsync(arrayBuffer);
+
+    // 슬라이드 파일 목록 추출 및 정렬 (slide1.xml, slide2.xml, ...)
+    const slideFiles = Object.keys(archive.files)
+        .filter(name => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+        .sort((a, b) => {
+            const numA = parseInt(a.match(/slide(\d+)/)[1], 10);
+            const numB = parseInt(b.match(/slide(\d+)/)[1], 10);
+            return numA - numB;
+        });
+
+    if (slideFiles.length === 0) {
+        self.postMessage({ type: 'error', id, message: `PPTX 슬라이드를 찾을 수 없습니다: ${fileName}` });
+        return;
+    }
+
+    self.postMessage({
+        type: 'progress', id,
+        message: `PPTX 파싱 중: ${fileName} (${slideFiles.length}슬라이드)`,
+        percent: 10
+    });
+
+    const HEADER = ['본문'];
+    let totalRows = 0;
+
+    for (let i = 0; i < slideFiles.length; i++) {
+        const slideFile = slideFiles[i];
+        const xmlText = await archive.files[slideFile].async('text');
+
+        // XML에서 <a:t> 태그 내용 추출 (간단한 정규식 파싱, DOM 파서 불필요)
+        // <a:t> 태그는 PowerPoint의 텍스트 런(text run)을 나타냄
+        const textFragments = [];
+        const regex = /<a:t[^>]*>([^<]*)<\/a:t>/g;
+        let match;
+        while ((match = regex.exec(xmlText)) !== null) {
+            if (match[1].trim()) {
+                textFragments.push(match[1]);
+            }
+        }
+
+        // 텍스트가 없는 슬라이드(이미지만 있는 경우 등)는 건너뛰
+        if (textFragments.length === 0) continue;
+
+        const slideText = textFragments.join(' ');
+        const slideNum = i + 1;
+        const sheetName = `슬라이드 ${slideNum}`;
+
+        self.postMessage({
+            type: 'chunk', id,
+            sheetName,
+            headers: HEADER,
+            rows: [[slideText]],
+            offset: 0
+        });
+
+        totalRows++;
+
+        const pct = Math.round(10 + (slideNum / slideFiles.length * 80));
+        self.postMessage({
+            type: 'progress', id,
+            message: `PPTX 파싱 중: ${fileName} (${slideNum}/${slideFiles.length}슬라이드)`,
             percent: Math.min(pct, 90)
         });
     }

@@ -30,16 +30,19 @@ const EXPORT_MIME_MAP = {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // → xlsx
     'application/vnd.google-apps.document':
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // → docx
+    'application/vnd.google-apps.presentation':
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation', // → pptx
 };
 
 // 내보내기 시 사용할 파일 확장자
 const EXPORT_EXT_MAP = {
     'application/vnd.google-apps.spreadsheet': '.xlsx',
     'application/vnd.google-apps.document': '.docx',
+    'application/vnd.google-apps.presentation': '.pptx',
 };
 
 // GridSonar가 지원하는 파일 확장자
-const SUPPORTED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf', '.docx'];
+const SUPPORTED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf', '.docx', '.pptx'];
 
 // Google Workspace 문서 중 지원 가능한 mimeType
 const SUPPORTED_WORKSPACE_MIMES = Object.keys(EXPORT_MIME_MAP);
@@ -187,9 +190,11 @@ function openPicker(token) {
             .setIncludeFolders(true)
             .setSelectFolderEnabled(false);
 
-        // Google Sheets, Docs도 표시 (export로 변환 가능)
+        // Google Sheets, Docs, Slides도 표시 (export로 변환 가능)
         const sheetsView = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS);
         const docsDocView = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS);
+        // [v2.7.0] Google Slides → PPTX 변환 다운로드 지원
+        const slidesView = new google.picker.DocsView(google.picker.ViewId.PRESENTATIONS);
 
         const picker = new google.picker.PickerBuilder()
             .setOAuthToken(token)
@@ -197,6 +202,7 @@ function openPicker(token) {
             .addView(docsView)
             .addView(sheetsView)
             .addView(docsDocView)
+            .addView(slidesView)
             .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
             .setTitle(t('drivePickerTitle') || 'Google Drive에서 파일 선택')
             .setCallback((data) => {
