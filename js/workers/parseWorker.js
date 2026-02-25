@@ -30,17 +30,25 @@ function loadPapaParse() {
 
 function loadPdfJS() {
     if (typeof pdfjsLib !== 'undefined') return pdfjsLib;
-    // [v2.0.2] pdf.js v3.11.174 안정 버전 사용
-    // 1단계: 메인 라이브러리 로드
+    // [v2.1.2] pdf.js v3.11.174 — Worker 내 Nested Worker/FakeWorker 완전 차단
+    //
+    // 문제 체인:
+    //   1) workerSrc 설정 → Nested Worker 생성 시도 → CORS 차단
+    //   2) workerSrc 미설정 → document.currentScript로 fallback 경로 탐색
+    //                        → Worker 환경에 document 없음 → "document is not defined"
+    //
+    // 해결 전략:
+    //   1) pdf.worker.min.js를 importScripts로 현재 스레드에 직접 로드
+    //   2) GlobalWorkerOptions.workerPort에 더미 MessageChannel 포트 할당
+    //      → pdf.js가 "이미 외부에서 워커가 연결되었다"고 판단
+    //      → Nested Worker 생성/FakeWorker fallback 코드를 완전히 건너뜀
     importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
-    // 2단계: 워커 코드를 현재 스레드에 직접 로드 (Nested Worker CORS 우회)
-    //   - workerSrc URL 지정 방식은 Worker 내에서 Nested Worker 생성을 시도하며,
-    //     브라우저 CORS 정책에 의해 차단됨.
-    //   - FakeWorker fallback도 document.createElement() 호출로 인해
-    //     Worker 환경에서 "document is not defined" 에러 발생.
-    //   - 해결: pdf.worker.min.js를 importScripts로 동일 스레드에 로드하면
-    //     pdf.js가 워커 코드 존재를 감지하여 별도 워커 생성을 건너뜀.
     importScripts('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js');
+
+    // 더미 포트로 워커 연결 상태를 시뮬레이션
+    const channel = new MessageChannel();
+    pdfjsLib.GlobalWorkerOptions.workerPort = channel.port1;
+
     return pdfjsLib;
 }
 

@@ -20,6 +20,11 @@
 ### 수정됨 (Fixed)
 - **CJK 폰트 PDF 파싱 실패 해결** — `cMapUrl` + `cMapPacked` 옵션 추가. 한글/중국어/일본어 폰트가 PDF에 내장되지 않고 OS/Adobe 기본 폰트를 참조하는 경우, CMap(Character Map) 사전을 CDN에서 로드하여 글리프 코드→유니코드 변환 수행. 이전에는 CMap 미설정으로 "Unable to load CMap" 에러 → 워커 크래시 → 파싱 실패.
 
+## [2.1.2] - 2026-02-25
+
+### 수정됨 (Fixed)
+- **PDF "document is not defined" 에러 근본 해결** — `pdfjsLib.GlobalWorkerOptions.workerPort`에 `MessageChannel` 더미 포트를 할당하여 pdf.js가 "외부 워커가 이미 연결됨" 상태로 인식하도록 강제. 이전 `importScripts`만으로는 `document.currentScript` fallback 경로 탐색을 차단하지 못해 캐시 삭제 후 에러 재발.
+
 ## [2.0.2] - 2026-02-25
 
 ### 수정됨 (Fixed)
