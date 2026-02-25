@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     // [v2.1.0] 세션 히스토리 초기 렌더링
     renderSessionHistory();
-    logger.info('GridSonar 초기화 완료 (v2.1.0)');
+    logger.info('GridSonar 초기화 완료 (v2.7.0)');
 });
 
 function cacheDomRefs() {
@@ -338,7 +338,8 @@ function bindEvents() {
 // ── 파일 처리 ──
 
 // [v2.0.0] 지원되는 확장자 — PDF/DOCX 비정형 문서 포함
-const SUPPORTED_EXT = new Set(['.xlsx', '.xls', '.csv', '.pdf', '.docx']);
+// [v2.7.0] .pptx 추가 — fileParser.js, googleDrive.js와 동일하게 유지
+const SUPPORTED_EXT = new Set(['.xlsx', '.xls', '.csv', '.pdf', '.docx', '.pptx']);
 
 /**
  * 파일명이 지원되는 확장자인지 확인합니다.
