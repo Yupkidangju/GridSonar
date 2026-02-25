@@ -7,7 +7,7 @@
 const translations = {
     ko: {
         appName: 'GridSonar',
-        searchPlaceholder: '검색어를 입력하세요... (초성 검색: ㅎㄱㄷ, 제외: -키워드, 범위: 100~500)',
+        searchPlaceholder: '검색어를 입력하세요... (초성: ㅎㄱㄷ, 제외: -키워드, 범위: 100~500, 열: 열:이름 홍길동)',
         searchButton: '검색',
         dropFilesText: '파일을 여기에 끌어다 놓으세요',
         dropFilesOr: '또는 클릭하여 파일 선택',
@@ -90,7 +90,7 @@ const translations = {
     },
     en: {
         appName: 'GridSonar',
-        searchPlaceholder: 'Enter search term... (Fuzzy, -Exclude, Range: 100~500)',
+        searchPlaceholder: 'Search... (Fuzzy, -Exclude, Range: 100~500, Column: col:Name John)',
         searchButton: 'Search',
         dropFilesText: 'Drop files here',
         dropFilesOr: 'or click to select files',

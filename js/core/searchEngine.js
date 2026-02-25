@@ -68,7 +68,7 @@ export function search(index, rawQuery, options = {}) {
 
     const query = parseQuery(rawQuery);
 
-    if (query.keywords.length === 0 && query.ranges.length === 0) {
+    if (query.keywords.length === 0 && query.ranges.length === 0 && query.columnFilters.length === 0) {
         return [];
     }
 
@@ -94,6 +94,11 @@ export function search(index, rawQuery, options = {}) {
     // 범위 검색
     for (const [minVal, maxVal] of query.ranges) {
         _rangeSearch(index, minVal, maxVal, rowScores);
+    }
+
+    // [v2.3.0] 열 모드 검색: 특정 열에서만 키워드 검색
+    for (const { column, keyword } of query.columnFilters) {
+        _columnSearch(index, column, keyword, rowScores);
     }
 
     // 계층 4: BM25 관련도 점수 가산
@@ -319,3 +324,49 @@ function _applyAndCondition(index, keywords, rowScores) {
 
 // 가중치 상수 내보내기 (테스트/디버깅용)
 export { WEIGHT_EXACT, WEIGHT_CHOSUNG, WEIGHT_FUZZY, WEIGHT_BM25, WEIGHT_RANGE };
+
+/**
+ * [v2.3.0] 열 모드 검색: 특정 열(컨럼)에서만 키워드를 검색합니다.
+ * 열 이름은 대소문자 무시 부분 일치로 매칭합니다.
+ * 예: col:이름 홍길동 → '이름' 열에서 '홍길동' 검색
+ * @param {Object} index - 검색 인덱스
+ * @param {string} column - 대상 열 이름
+ * @param {string} keyword - 검색 키워드
+ * @param {Map} rowScores - 행별 점수 맵
+ */
+function _columnSearch(index, column, keyword, rowScores) {
+    const colLower = column.toLowerCase();
+    const kwLower = keyword.toLowerCase();
+
+    // 인버티드 인덱스에서 키워드 포함 셀 검색
+    const cellIndices = index.findCellsContaining(keyword);
+
+    for (const cellIdx of cellIndices) {
+        const cell = index.cells[cellIdx];
+        if (cell === null) continue;
+
+        // 열 이름 필터: 대소문자 무시 부분 일치
+        const cellColLower = cell.colName.toLowerCase();
+        if (!cellColLower.includes(colLower)) continue;
+
+        const rowKey = `${cell.filePath}|${cell.sheetName}|${cell.rowIdx}`;
+
+        // 유사도 계산
+        const valLower = cell.value.toLowerCase();
+        let sim;
+        if (valLower === kwLower) {
+            sim = 1.0;
+        } else {
+            sim = valLower.includes(kwLower) ? 0.9 : 0.8;
+        }
+
+        const score = WEIGHT_EXACT * sim;
+        const match = {
+            colName: cell.colName,
+            cellValue: cell.value,
+            matchType: 'exact',
+            similarity: sim
+        };
+        updateRowScore(rowScores, rowKey, score, 'exact', sim, match);
+    }
+}
