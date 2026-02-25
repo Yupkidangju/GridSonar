@@ -951,9 +951,12 @@ function renderResults(results, query) {
     // 가상 스크롤 상태 초기화
     virtualScroll.allResults = results;
     virtualScroll.visibleResults = results;
-    // [v2.5.2 Fix] 하이라이트에 순수 키워드만 전달 (col:/regex 구문 제외)
+    // [v2.5.4] 하이라이트에 순수 키워드 + 열 필터 값 전달 (col:/regex 구문 자체는 제외)
     const parsed = parseQuery(query);
-    virtualScroll.keywords = parsed.keywords.map(k => k.toLowerCase());
+    virtualScroll.keywords = [
+        ...parsed.keywords.map(k => k.toLowerCase()),
+        ...parsed.columnFilters.map(cf => cf.keyword.toLowerCase())
+    ];
     virtualScroll.lastStart = -1;
     virtualScroll.lastEnd = -1;
 

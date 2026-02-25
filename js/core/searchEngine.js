@@ -118,14 +118,15 @@ export function search(index, rawQuery, options = {}) {
         _applyExcludes(index, query.excludes, rowScores);
     }
 
-    // [v2.5.2] 통합 AND 조건 적용:
-    // 일반 키워드, 정규식, 범위, 열 필터를 모두 AND(교집합)으로 강제.
-    // 쿼리 유형이 2가지 이상이거나, 키워드가 2개 이상일 때 발동.
-    const queryTypeCount = (query.keywords.length > 0 ? 1 : 0)
-        + (query.ranges.length > 0 ? 1 : 0)
-        + (query.regexFilters.length > 0 ? 1 : 0)
-        + (query.columnFilters.length > 0 ? 1 : 0);
-    if (queryTypeCount > 1 || query.keywords.length > 1) {
+    // [v2.5.4 Fix] 통합 AND 조건 적용:
+    // 모든 조건의 총합이 2개 이상이면 AND(교집합) 검증 발동.
+    // 기존 queryTypeCount(유형 수)는 동종 다중 조건(/a/ /b/, 범위 2개 등)에서
+    // 1로 계산되어 AND가 발동되지 않는 치명적 버그가 있었음.
+    const totalConditions = query.keywords.length
+        + query.ranges.length
+        + query.regexFilters.length
+        + query.columnFilters.length;
+    if (totalConditions > 1) {
         _applyAndCondition(index, query, rowScores);
     }
 
